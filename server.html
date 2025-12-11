@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>Server (Viewer)</title>
+    <style>
+        body { display: flex; flex-direction: column; align-items: center; background: #222; color: white; }
+        /* 16:9 비율 유지를 위한 컨테이너 */
+        #video-container {
+            position: relative;
+            width: 80%;
+            max-width: 960px;
+            aspect-ratio: 16 / 9;
+            background: black;
+            border: 2px solid #555;
+            cursor: crosshair;
+        }
+        video { width: 100%; height: 100%; object-fit: contain; }
+        button { padding: 10px 20px; font-size: 16px; margin: 20px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h2>Server (Video Receiver)</h2>
+    <button id="btnRequestStart">촬영 시작 요청</button>
+    
+    <div id="video-container">
+        <video id="remoteVideo" autoplay playsinline></video>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+        const remoteVideo = document.getElementById('remoteVideo');
+        const videoContainer = document.getElementById('video-container');
+        let peerConnection;
+
+        // WebRTC 설정 (Google 무료 STUN 서버 사용)
+        const rtcConfig = {
+            iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+        };
+
+        // 1. 촬영 시작 요청 버튼
+        document.getElementById('btnRequestStart').addEventListener('click', () => {
+            console.log("Requesting camera start...");
+            socket.emit('request_start_camera');
+        });
+
+        // 2. 마우스 입력 (드래그/클릭) 좌표 전송
+        // 영상 내부에서의 상대 좌표(0.0 ~ 1.0)로 변환하여 전송해야 해상도가 달라도 정확함
+        videoContainer.addEventListener('mousedown', (e) => {
+            sendCoordinates(e);
+        });
+
+        function sendCoordinates(e) {
+            const rect = videoContainer.getBoundingClientRect();
+            const x = (e.clientX - rect.left) / rect.width; // 0.0 ~ 1.0
+            const y = (e.clientY - rect.top) / rect.height; // 0.0 ~ 1.0
+            
+            // 좌표 전송
+            socket.emit('send_input_coordinates', { x: x.toFixed(4), y: y.toFixed(4) });
+            console.log(`Sent Coords: ${x.toFixed(4)}, ${y.toFixed(4)}`);
+        }
+
+        // 3. WebRTC Signaling 처리
+        socket.on('offer', async (offer) => {
+            createPeerConnection();
+            await peerConnection.setRemoteDescription(offer);
+            const answer = await peerConnection.createAnswer();
+            await peerConnection.setLocalDescription(answer);
+            socket.emit('answer', answer);
+        });
+
+        socket.on('ice-candidate', (candidate) => {
+            if (peerConnection) {
+                peerConnection.addIceCandidate(candidate);
+            }
+        });
+
+        function createPeerConnection() {
+            peerConnection = new RTCPeerConnection(rtcConfig);
+
+            // 상대방의 영상 트랙 수신 시 비디오 태그에 연결
+            peerConnection.ontrack = (event) => {
+                remoteVideo.srcObject = event.streams[0];
+            };
+
+            peerConnection.onicecandidate = (event) => {
+                if (event.candidate) {
+                    socket.emit('ice-candidate', event.candidate);
+                }
+            };
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>Client (Camera)</title>
+    <style>
+        body { text-align: center; background: #f0f0f0; }
+        video { width: 320px; border: 1px solid #ccc; transform: scaleX(-1); /* 거울 모드 */ }
+        #log { margin-top: 20px; white-space: pre-line; text-align: left; display: inline-block;}
+    </style>
+</head>
+<body>
+    <h2>Client (Camera Sender)</h2>
+    <p>서버의 요청을 대기 중이거나, 아래 버튼을 눌러 시작하세요.</p>
+    <button id="btnLocalStart">내 촬영 시작 (수동)</button>
+    <br><br>
+    <video id="localVideo" autoplay playsinline muted></video>
+    <div id="log"></div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+        const localVideo = document.getElementById('localVideo');
+        const logDiv = document.getElementById('log');
+        let peerConnection;
+        let localStream;
+
+        const rtcConfig = {
+            iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+        };
+
+        // 1. 촬영 시작 명령 수신 (서버로부터)
+        socket.on('cmd_start_camera', () => {
+            log("서버로부터 촬영 요청을 받았습니다.");
+            startStreaming();
+        });
+
+        // 2. 좌표 데이터 수신
+        socket.on('cmd_input_coordinates', (coords) => {
+            log(`[입력 수신] X: ${coords.x}, Y: ${coords.y}`);
+            // 여기에 실제 로직 구현 (예: 해당 위치에 포인터 표시 등)
+        });
+
+        // 수동 시작 버튼
+        document.getElementById('btnLocalStart').addEventListener('click', startStreaming);
+
+        async function startStreaming() {
+            if (localStream) return; // 이미 실행 중이면 패스
+
+            try {
+                // 16:9 비율 요청
+                localStream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { aspectRatio: 1.777 }, 
+                    audio: false 
+                });
+                localVideo.srcObject = localStream;
+                
+                // 스트림 시작 후 연결 생성
+                createPeerConnection();
+                
+                // 스트림 트랙 추가
+                localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+
+                // Offer 생성 및 전송 (Initiator)
+                const offer = await peerConnection.createOffer();
+                await peerConnection.setLocalDescription(offer);
+                socket.emit('offer', offer);
+                log("스트리밍 시작 (Offer 전송)");
+
+            } catch (err) {
+                console.error(err);
+                log("카메라 접근 실패: " + err.message);
+            }
+        }
+
+        // WebRTC Signaling 처리
+        socket.on('answer', (answer) => {
+            peerConnection.setRemoteDescription(answer);
+        });
+
+        socket.on('ice-candidate', (candidate) => {
+            if (peerConnection) {
+                peerConnection.addIceCandidate(candidate);
+            }
+        });
+
+        function createPeerConnection() {
+            peerConnection = new RTCPeerConnection(rtcConfig);
+            
+            peerConnection.onicecandidate = (event) => {
+                if (event.candidate) {
+                    socket.emit('ice-candidate', event.candidate);
+                }
+            };
+        }
+
+        function log(msg) {
+            logDiv.textContent = msg + "\n" + logDiv.textContent;
+        }
+    </script>
+</body>
+</html>
