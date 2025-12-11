@@ -1,6 +1,7 @@
 # server.py
 from aiohttp import web
 import socketio
+import ssl  # [추가] SSL 모듈 임포트
 
 # 1. Socket.IO 서버 생성 (CORS 허용)
 sio = socketio.AsyncServer(async_mode='aiohttp', cors_allowed_origins='*')
@@ -11,6 +12,7 @@ sio.attach(app)
 app.router.add_static('/public', './public')
 
 async def index(request):
+    # HTTPS 접속 시에도 동일하게 리다이렉트
     raise web.HTTPFound('/public/viewer.html')
 
 app.router.add_get('/', index)
@@ -22,14 +24,14 @@ app.router.add_get('/', index)
 @sio.event
 async def connect(sid, environ):
     print(f"Client connected: {sid}")
-    # [수정] await 추가 필수!
+    # [유지] await 필수
     await sio.enter_room(sid, 'room1') 
     print(f"Client {sid} joined room1")
 
 @sio.event
 async def disconnect(sid):
     print(f"Client disconnected: {sid}")
-    # [수정] await 추가 필수!
+    # [유지] await 필수
     await sio.leave_room(sid, 'room1')
 
 @sio.event
@@ -51,12 +53,26 @@ async def on_request_start(sid):
 
 @sio.on('send_input_coordinates')
 async def on_input_coords(sid, data):
-    # print(f"Input received from {sid}: {data}") # 로그 너무 많으면 주석 처리
+    # print(f"Input received from {sid}: {data}") 
     await sio.emit('cmd_input_coordinates', data, room='room1', skip_sid=sid)
 
 # ---------------------------------------------------------
-# 4. 서버 실행
+# 4. 서버 실행 (HTTPS 설정 추가)
 # ---------------------------------------------------------
 if __name__ == '__main__':
-    print("Python Signaling Server running on http://localhost:3000")
-    web.run_app(app, port=3000)
+    # SSL 컨텍스트 생성
+    ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+    
+    try:
+        # [중요] gen_cert.py로 생성한 인증서 파일 로드
+        ssl_context.load_cert_chain('cert.pem', 'key.pem')
+        
+        print("🔒 HTTPS Local Server running on https://0.0.0.0:3000")
+        print("⚠️  브라우저 접속 시 '고급 -> 안전하지 않음으로 이동'을 눌러주세요.")
+        
+        # ssl_context 추가하여 실행
+        web.run_app(app, port=3000, ssl_context=ssl_context)
+        
+    except FileNotFoundError:
+        print("❌ [오류] 인증서 파일(cert.pem, key.pem)을 찾을 수 없습니다.")
+        print("   먼저 gen_cert.py를 실행하여 인증서를 생성해주세요.")

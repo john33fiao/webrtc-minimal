@@ -1,1 +1,3 @@
 socket.io.min.js
+cert.pem
+key.pem
