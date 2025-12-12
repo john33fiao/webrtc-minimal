@@ -63,10 +63,10 @@
         if (localStream) return;
         try {
             log("📷 카메라 권한 요청 중...");
-            // 모바일 후면 카메라 우선 시도
-            localStream = await navigator.mediaDevices.getUserMedia({ 
-                video: { facingMode: "environment", aspectRatio: 1.777 }, 
-                audio: false 
+            // 모든 카메라 장치 사용 (OBS 가상 카메라 포함)
+            localStream = await navigator.mediaDevices.getUserMedia({
+                video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+                audio: false
             });
             localVideo.srcObject = localStream;
             log("🎥 스트림 획득 성공! WebRTC 연결 시작...");
