@@ -67,9 +67,12 @@
         const remoteVideo = document.getElementById('remoteVideo');
         const videoContainer = document.getElementById('video-container');
         let peerConnection;
+        const STROKE_LIFETIME = 10_000;
         let isDrawing = false;
-        let lastPoint = null;
-        const remoteStrokeState = new Map();
+        let lastNormalizedPoint = null;
+        const strokeList = [];
+        const activeStrokes = new Map();
+        let cleanupIntervalId = null;
         const viewerStrokeColor = '#0000FF';
 
         const overlayCanvas = document.getElementById('annotationCanvas');
@@ -83,6 +86,7 @@
             overlayCtx.lineWidth = 3;
             overlayCtx.lineCap = 'round';
             overlayCtx.lineJoin = 'round';
+            redrawAllStrokes();
         }
 
         function getNormalizedCoords(event) {
@@ -102,21 +106,105 @@
             };
         }
 
-        function drawStrokeSegment(from, to) {
+        function drawStrokeSegment(from, to, color = overlayCtx.strokeStyle) {
+            overlayCtx.save();
+            overlayCtx.strokeStyle = color;
             overlayCtx.beginPath();
             overlayCtx.moveTo(from.x, from.y);
             overlayCtx.lineTo(to.x, to.y);
             overlayCtx.stroke();
+            overlayCtx.restore();
         }
 
-        function drawPoint(point) {
+        function drawPoint(point, color = overlayCtx.strokeStyle) {
+            overlayCtx.save();
+            overlayCtx.fillStyle = color;
             overlayCtx.beginPath();
             overlayCtx.arc(point.x, point.y, 2, 0, Math.PI * 2);
-            overlayCtx.fillStyle = overlayCtx.strokeStyle;
             overlayCtx.fill();
+            overlayCtx.restore();
         }
 
-        function sendAnnotationPoint(normalized, isStart = false) {
+        function renderStroke(stroke) {
+            if (!stroke.points.length) return;
+            const points = stroke.points.map(denormalizeCoords);
+            overlayCtx.save();
+            overlayCtx.strokeStyle = stroke.color;
+            overlayCtx.fillStyle = stroke.color;
+
+            if (points.length === 1) {
+                drawPoint(points[0], stroke.color);
+            } else {
+                for (let i = 1; i < points.length; i++) {
+                    drawStrokeSegment(points[i - 1], points[i], stroke.color);
+                }
+            }
+            overlayCtx.restore();
+        }
+
+        function redrawAllStrokes() {
+            overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+            strokeList.forEach(renderStroke);
+        }
+
+        function pruneExpiredStrokes() {
+            const now = Date.now();
+            const beforeLength = strokeList.length;
+            for (const [key, stroke] of activeStrokes.entries()) {
+                if (stroke.endedAt && now - stroke.endedAt >= STROKE_LIFETIME) {
+                    activeStrokes.delete(key);
+                }
+            }
+
+            const remaining = strokeList.filter((stroke) => {
+                if (!stroke.endedAt) return true;
+                return now - stroke.endedAt < STROKE_LIFETIME;
+            });
+
+            if (remaining.length !== strokeList.length) {
+                strokeList.length = 0;
+                strokeList.push(...remaining);
+                redrawAllStrokes();
+            }
+        }
+
+        function ensureCleanupTimer() {
+            if (cleanupIntervalId !== null) return;
+            cleanupIntervalId = setInterval(pruneExpiredStrokes, 1000);
+        }
+
+        function createStroke(strokeKey, normalizedPoint, color) {
+            const stroke = {
+                key: strokeKey,
+                color,
+                points: [normalizedPoint],
+                endedAt: null,
+            };
+            strokeList.push(stroke);
+            activeStrokes.set(strokeKey, stroke);
+            drawPoint(denormalizeCoords(normalizedPoint), color);
+            ensureCleanupTimer();
+            return stroke;
+        }
+
+        function appendStrokePoint(strokeKey, normalizedPoint, color) {
+            const stroke = activeStrokes.get(strokeKey);
+            if (!stroke) return createStroke(strokeKey, normalizedPoint, color);
+
+            const prevPoint = stroke.points[stroke.points.length - 1];
+            stroke.points.push(normalizedPoint);
+            drawStrokeSegment(denormalizeCoords(prevPoint), denormalizeCoords(normalizedPoint), color);
+            return stroke;
+        }
+
+        function finishStroke(strokeKey, endedAt = Date.now()) {
+            const stroke = activeStrokes.get(strokeKey);
+            if (!stroke) return;
+            stroke.endedAt = endedAt;
+            activeStrokes.delete(strokeKey);
+        }
+
+        function sendAnnotationPoint(normalized, isStart = false, isEnd = false) {
             const payload = {
                 x: normalized.x,
                 y: normalized.y,
@@ -124,6 +212,7 @@
                 createdAt: Date.now(),
                 kind: 'annotation-point',
                 isStart,
+                isEnd,
                 color: viewerStrokeColor,
             };
             socket.emit('annotation:point', payload);
@@ -151,53 +240,58 @@
         overlayCanvas.addEventListener('mousedown', (e) => {
             requestStartCamera();
             const normalized = getNormalizedCoords(e);
-            const canvasPoint = denormalizeCoords(normalized);
             isDrawing = true;
-            lastPoint = canvasPoint;
-            drawPoint(canvasPoint);
+            lastNormalizedPoint = normalized;
+            createStroke('viewer', normalized, viewerStrokeColor);
             sendAnnotationPoint(normalized, true);
         });
 
         overlayCanvas.addEventListener('mousemove', (e) => {
             if (!isDrawing) return;
             const normalized = getNormalizedCoords(e);
-            const canvasPoint = denormalizeCoords(normalized);
-            drawStrokeSegment(lastPoint, canvasPoint);
-            lastPoint = canvasPoint;
+            appendStrokePoint('viewer', normalized, viewerStrokeColor);
+            lastNormalizedPoint = normalized;
             sendAnnotationPoint(normalized);
         });
 
         ['mouseup', 'mouseleave'].forEach((eventName) => {
-            overlayCanvas.addEventListener(eventName, () => {
+            overlayCanvas.addEventListener(eventName, (e) => {
+                if (!isDrawing) return;
+                const normalized = e ? getNormalizedCoords(e) : lastNormalizedPoint;
+                if (normalized) {
+                    appendStrokePoint('viewer', normalized, viewerStrokeColor);
+                    sendAnnotationPoint(normalized, false, true);
+                } else if (lastNormalizedPoint) {
+                    sendAnnotationPoint(lastNormalizedPoint, false, true);
+                }
+                finishStroke('viewer');
                 isDrawing = false;
-                lastPoint = null;
+                lastNormalizedPoint = null;
             });
         });
 
         // 서버/상대 클라이언트에서 전달된 판서 좌표 수신
         socket.on('annotation:point', (payload) => {
             console.log('[annotation] received', payload);
-            const canvasPoint = denormalizeCoords(payload);
             const strokeKey = payload.source || 'peer';
             const strokeColor = payload.color || '#0000FF';
+            const normalizedPoint = { x: payload.x, y: payload.y };
 
             if (payload.isStart) {
-                remoteStrokeState.delete(strokeKey);
-            }
-            const previousPoint = remoteStrokeState.get(strokeKey);
-
-            overlayCtx.save();
-            overlayCtx.strokeStyle = strokeColor;
-            overlayCtx.fillStyle = strokeColor;
-
-            if (previousPoint && !payload.isStart) {
-                drawStrokeSegment(previousPoint.point, canvasPoint);
+                const existing = activeStrokes.get(strokeKey);
+                if (existing) {
+                    existing.endedAt = payload.createdAt || Date.now();
+                    activeStrokes.delete(strokeKey);
+                }
+                createStroke(strokeKey, normalizedPoint, strokeColor);
             } else {
-                drawPoint(canvasPoint);
+                appendStrokePoint(strokeKey, normalizedPoint, strokeColor);
             }
 
-            overlayCtx.restore();
-            remoteStrokeState.set(strokeKey, { point: canvasPoint, color: strokeColor });
+            if (payload.isEnd) {
+                const endedAt = payload.createdAt || Date.now();
+                finishStroke(strokeKey, endedAt);
+            }
         });
 
         // 3. WebRTC Signaling 처리
@@ -229,6 +323,8 @@
                 }
             };
         }
+
+        ensureCleanupTimer();
     </script>
 </body>
 </html>
