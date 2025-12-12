@@ -98,10 +98,6 @@
 
         let peerConnection;
         let cameraStream;
-        let outboundStream;
-        let compositeCanvas;
-        let compositeCtx;
-        let compositeAnimationId;
         let isDrawing = false;
         let currentColor = '#5eead4';
         let lastCanvasPoint = null;
@@ -117,59 +113,6 @@
 
         function log(message) {
             console.log(message);
-        }
-
-        function getVideoResolution() {
-            const track = cameraStream?.getVideoTracks()[0];
-            const settings = track?.getSettings?.() || {};
-            const width = settings.width || localVideo.videoWidth || TARGET_WIDTH;
-            const height = settings.height || localVideo.videoHeight || TARGET_HEIGHT;
-            return { width, height };
-        }
-
-        function ensureCompositeCanvas() {
-            if (!compositeCanvas) {
-                compositeCanvas = document.createElement('canvas');
-                compositeCtx = compositeCanvas.getContext('2d');
-            }
-
-            if (compositeCanvas.width !== TARGET_WIDTH || compositeCanvas.height !== TARGET_HEIGHT) {
-                compositeCanvas.width = TARGET_WIDTH;
-                compositeCanvas.height = TARGET_HEIGHT;
-            }
-        }
-
-        function startCompositeStream() {
-            ensureCompositeCanvas();
-
-            const drawFrame = () => {
-                const { width, height } = getVideoResolution();
-                if (!width || !height) {
-                    compositeAnimationId = requestAnimationFrame(drawFrame);
-                    return;
-                }
-
-                compositeCtx.clearRect(0, 0, compositeCanvas.width, compositeCanvas.height);
-
-                const scale = Math.min(TARGET_WIDTH / width, TARGET_HEIGHT / height);
-                const drawWidth = width * scale;
-                const drawHeight = height * scale;
-                const offsetX = (TARGET_WIDTH - drawWidth) / 2;
-                const offsetY = (TARGET_HEIGHT - drawHeight) / 2;
-
-                compositeCtx.fillStyle = 'black';
-                compositeCtx.fillRect(0, 0, TARGET_WIDTH, TARGET_HEIGHT);
-                compositeCtx.drawImage(localVideo, offsetX, offsetY, drawWidth, drawHeight);
-                compositeCtx.drawImage(drawCanvas, 0, 0, TARGET_WIDTH, TARGET_HEIGHT);
-                compositeAnimationId = requestAnimationFrame(drawFrame);
-            };
-
-            if (compositeAnimationId) cancelAnimationFrame(compositeAnimationId);
-            if (!outboundStream) {
-                outboundStream = compositeCanvas.captureStream(30);
-            }
-            drawFrame();
-            return outboundStream;
         }
 
         function waitForVideoReady(videoEl) {
@@ -411,7 +354,16 @@
             if (!stream) return;
 
             createPeerConnection();
-            stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));
+            stream.getTracks().forEach((track) => {
+                const sender = peerConnection.addTrack(track, stream);
+                if (track.kind === 'video') {
+                    const params = sender.getParameters();
+                    params.encodings = params.encodings || [{}];
+                    params.encodings[0].maxBitrate = 8_000_000; // 영상 스트림만 송출하므로 넉넉히 확보
+                    params.encodings[0].maxFramerate = 30;
+                    sender.setParameters(params);
+                }
+            });
 
             const offer = await peerConnection.createOffer();
             await peerConnection.setLocalDescription(offer);
@@ -433,8 +385,8 @@
                     log('🎥 스트림 획득 성공! WebRTC 연결 시작...');
                 }
 
-                const mixedStream = startCompositeStream();
-                await negotiateWithStream(mixedStream);
+                // 판서 오버레이는 각 측에서 별도 캔버스로 렌더링하며, 영상 스트림에 합성하지 않습니다.
+                await negotiateWithStream(cameraStream);
 
             } catch (err) {
                 console.error(err);
@@ -465,9 +417,9 @@
             ctx.font = '30px Arial';
             ctx.fillText('(Dummy Stream)', canvas.width / 2, canvas.height / 2 + 60);
 
-            outboundStream = canvas.captureStream(30);
-            localVideo.srcObject = outboundStream;
-            negotiateWithStream(outboundStream).then(() => {
+            cameraStream = canvas.captureStream(30);
+            localVideo.srcObject = cameraStream;
+            negotiateWithStream(cameraStream).then(() => {
                 log('📡 Offer 전송 완료 (Dummy Stream)');
             });
         }
