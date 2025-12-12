@@ -4,40 +4,129 @@
     <meta charset="UTF-8">
     <title>Client (Camera)</title>
     <style>
-        body { text-align: center; background: #f0f0f0; }
-        video { width: 320px; border: 1px solid #ccc; transform: scaleX(-1); /* 거울 모드 */ }
-        #log { margin-top: 20px; white-space: pre-line; text-align: left; display: inline-block;}
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 16px;
+            padding: 24px;
+            margin: 0;
+            font-family: "Noto Sans KR", sans-serif;
+            background: #0d0d0f;
+            color: #f5f5f5;
+        }
+        h2 { margin: 0; }
+        p { margin: 0 0 4px; color: #ccccd6; }
+        #video-wrapper {
+            position: relative;
+            width: 90%;
+            max-width: 900px;
+            background: #11131a;
+            border: 1px solid #1f2333;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+        }
+        #video-overlay {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+        }
+        #overlay-controls {
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            pointer-events: auto;
+        }
+        .overlay-button {
+            padding: 10px 14px;
+            border: none;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            color: #0d0d0f;
+            background: rgba(255, 255, 255, 0.9);
+            transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
+        }
+        .overlay-button:hover { transform: translateY(-1px); box-shadow: 0 6px 14px rgba(0,0,0,0.25); }
+        .overlay-button.is-active { background: #32c3a7; color: #03120e; }
+        .overlay-button.danger { background: #ff9b6a; }
+        video {
+            width: 100%;
+            height: auto;
+            display: block;
+            object-fit: cover;
+            transform: scaleX(-1);
+            background: #000;
+        }
+        #log { width: 90%; max-width: 900px; margin-top: 8px; white-space: pre-line; text-align: left; background: #0f111c; border: 1px solid #1f2333; border-radius: 10px; padding: 12px; box-sizing: border-box; }
     </style>
 </head>
 <body>
     <h2>Client (Camera Sender)</h2>
-    <p>서버의 요청을 대기 중이거나, 아래 버튼을 눌러 시작하세요.</p>
-    <button id="btnLocalStart">내 촬영 시작 (수동)</button>
-    <br><br>
-    <video id="localVideo" autoplay playsinline muted></video>
+    <p>근무자 영상과 판서를 송출합니다. 영상 위 오버레이 버튼으로 촬영/판서를 제어하세요.</p>
+
+    <div id="video-wrapper">
+        <video id="localVideo" autoplay playsinline muted></video>
+        <div id="video-overlay">
+            <div id="overlay-controls">
+                <button id="btnToggleStream" class="overlay-button danger">촬영 시작</button>
+                <button id="btnToggleDrawing" class="overlay-button">판서 시작</button>
+            </div>
+        </div>
+    </div>
+
     <div id="log"></div>
 
-    <!-- <script src="/socket.io/socket.io.js"></script> -->
 <script src="socket.io.min.js"></script>
 <script>
-    // 명시적으로 서버 주소를 적지 않으면 현재 접속한 주소(192.168.x.x:3000)를 기준으로 연결합니다.
-    const socket = io(); 
+    const socket = io();
     const localVideo = document.getElementById('localVideo');
     const logDiv = document.getElementById('log');
+    const btnToggleStream = document.getElementById('btnToggleStream');
+    const btnToggleDrawing = document.getElementById('btnToggleDrawing');
+
     let peerConnection;
     let localStream;
+    let isStreaming = false;
+    let isDrawingMode = false;
 
     const rtcConfig = {
         iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
     };
 
-    // [중요] 디버깅을 위한 로그 함수
     function log(msg) {
         const time = new Date().toLocaleTimeString();
         logDiv.innerHTML = `[${time}] ${msg}<br>` + logDiv.innerHTML;
     }
 
-    // 1. 서버 연결 확인 이벤트
+    function updateOverlayUI() {
+        btnToggleStream.textContent = isStreaming ? '촬영 종료' : '촬영 시작';
+        btnToggleStream.classList.toggle('is-active', isStreaming);
+        btnToggleStream.classList.toggle('danger', !isStreaming);
+
+        btnToggleDrawing.textContent = isDrawingMode ? '판서 종료' : '판서 시작';
+        btnToggleDrawing.classList.toggle('is-active', isDrawingMode);
+    }
+
+    btnToggleStream.addEventListener('click', () => {
+        if (isStreaming) {
+            stopStreaming();
+        } else {
+            startStreaming();
+        }
+    });
+
+    btnToggleDrawing.addEventListener('click', () => {
+        isDrawingMode = !isDrawingMode;
+        log(isDrawingMode ? '✏️ 판서 모드를 시작했습니다.' : '🧹 판서 모드를 종료했습니다.');
+        updateOverlayUI();
+    });
+
     socket.on('connect', () => {
         log("✅ 서버에 연결되었습니다! (ID: " + socket.id + ")");
         log("촬영 요청 대기 중...");
@@ -51,19 +140,15 @@
         log("⚠️ 연결 오류: " + err.message);
     });
 
-    // 2. 촬영 시작 명령 수신
     socket.on('cmd_start_camera', () => {
         log("📩 서버로부터 촬영 요청 수신!");
         startStreaming();
     });
 
-    // ... (나머지 WebRTC 관련 코드는 기존과 동일, startStreaming 함수 등) ...
-    
     async function startStreaming() {
-        if (localStream) return;
+        if (isStreaming) return;
         try {
             log("📷 카메라 권한 요청 중...");
-            // 모든 카메라 장치 사용 (OBS 가상 카메라 포함)
             localStream = await navigator.mediaDevices.getUserMedia({
                 video: { width: { ideal: 1280 }, height: { ideal: 720 } },
                 audio: false
@@ -78,29 +163,49 @@
             await peerConnection.setLocalDescription(offer);
             socket.emit('offer', offer);
             log("📡 Offer 전송 완료");
-
+            setStreamingState(true);
         } catch (err) {
             console.error(err);
             log("❌ 카메라 실패: " + err.name + " - " + err.message);
-
-            // 카메라 권한 없으면 더미 화면 송출
             log("💡 더미 화면을 생성하여 송출합니다...");
             createDummyStream();
+            setStreamingState(true);
         }
     }
 
-    // 더미 canvas 스트림 생성
+    function stopStreaming() {
+        if (!isStreaming) return;
+
+        if (peerConnection) {
+            peerConnection.getSenders().forEach(sender => sender.track && sender.track.stop());
+            peerConnection.close();
+            peerConnection = null;
+        }
+
+        if (localStream) {
+            localStream.getTracks().forEach(track => track.stop());
+            localStream = null;
+        }
+
+        localVideo.srcObject = null;
+        log("🛑 촬영을 종료했습니다.");
+        setStreamingState(false);
+    }
+
+    function setStreamingState(value) {
+        isStreaming = value;
+        updateOverlayUI();
+    }
+
     function createDummyStream() {
         const canvas = document.createElement('canvas');
         canvas.width = 1280;
         canvas.height = 720;
         const ctx = canvas.getContext('2d');
 
-        // 배경 색상
         ctx.fillStyle = '#1a1a1a';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        // 텍스트 그리기
         ctx.fillStyle = '#ff0000';
         ctx.font = 'bold 60px Arial';
         ctx.textAlign = 'center';
@@ -111,33 +216,31 @@
         ctx.font = '30px Arial';
         ctx.fillText('(Dummy Stream)', canvas.width / 2, canvas.height / 2 + 60);
 
-        // canvas를 스트림으로 변환
-        localStream = canvas.captureStream(30); // 30 FPS
+        localStream = canvas.captureStream(30);
         localVideo.srcObject = localStream;
 
         createPeerConnection();
         localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
 
-        const offer = peerConnection.createOffer();
-        offer.then(off => {
+        const offerPromise = peerConnection.createOffer();
+        offerPromise.then(off => {
             peerConnection.setLocalDescription(off);
             socket.emit('offer', off);
             log("📡 Offer 전송 완료 (Dummy Stream)");
         });
     }
-    
-    // ... (createPeerConnection 등 나머지 함수 그대로) ...
-    
-    // (누락 방지를 위해 필수 함수 다시 기재)
+
     function createPeerConnection() {
         peerConnection = new RTCPeerConnection(rtcConfig);
         peerConnection.onicecandidate = (event) => {
             if (event.candidate) socket.emit('ice-candidate', event.candidate);
         };
     }
-    socket.on('answer', (ans) => peerConnection.setRemoteDescription(ans));
+
+    socket.on('answer', (ans) => peerConnection && peerConnection.setRemoteDescription(ans));
     socket.on('ice-candidate', (can) => peerConnection && peerConnection.addIceCandidate(can));
 
+    updateOverlayUI();
 </script>
 </body>
 </html>
