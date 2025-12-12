@@ -89,6 +89,9 @@
         const videoContainer = document.getElementById('videoContainer');
         const drawCtx = drawCanvas.getContext('2d');
 
+        const TARGET_WIDTH = 1920;
+        const TARGET_HEIGHT = 1080;
+
         let peerConnection;
         let cameraStream;
         let outboundStream;
@@ -111,8 +114,8 @@
         function getVideoResolution() {
             const track = cameraStream?.getVideoTracks()[0];
             const settings = track?.getSettings?.() || {};
-            const width = settings.width || localVideo.videoWidth || 1280;
-            const height = settings.height || localVideo.videoHeight || 720;
+            const width = settings.width || localVideo.videoWidth || TARGET_WIDTH;
+            const height = settings.height || localVideo.videoHeight || TARGET_HEIGHT;
             return { width, height };
         }
 
@@ -122,12 +125,9 @@
                 compositeCtx = compositeCanvas.getContext('2d');
             }
 
-            const { width, height } = getVideoResolution();
-            if (!width || !height) return;
-
-            if (compositeCanvas.width !== width || compositeCanvas.height !== height) {
-                compositeCanvas.width = width;
-                compositeCanvas.height = height;
+            if (compositeCanvas.width !== TARGET_WIDTH || compositeCanvas.height !== TARGET_HEIGHT) {
+                compositeCanvas.width = TARGET_WIDTH;
+                compositeCanvas.height = TARGET_HEIGHT;
             }
         }
 
@@ -141,14 +141,18 @@
                     return;
                 }
 
-                if (compositeCanvas.width !== width || compositeCanvas.height !== height) {
-                    compositeCanvas.width = width;
-                    compositeCanvas.height = height;
-                }
-
                 compositeCtx.clearRect(0, 0, compositeCanvas.width, compositeCanvas.height);
-                compositeCtx.drawImage(localVideo, 0, 0, compositeCanvas.width, compositeCanvas.height);
-                compositeCtx.drawImage(drawCanvas, 0, 0, compositeCanvas.width, compositeCanvas.height);
+
+                const scale = Math.min(TARGET_WIDTH / width, TARGET_HEIGHT / height);
+                const drawWidth = width * scale;
+                const drawHeight = height * scale;
+                const offsetX = (TARGET_WIDTH - drawWidth) / 2;
+                const offsetY = (TARGET_HEIGHT - drawHeight) / 2;
+
+                compositeCtx.fillStyle = 'black';
+                compositeCtx.fillRect(0, 0, TARGET_WIDTH, TARGET_HEIGHT);
+                compositeCtx.drawImage(localVideo, offsetX, offsetY, drawWidth, drawHeight);
+                compositeCtx.drawImage(drawCanvas, 0, 0, TARGET_WIDTH, TARGET_HEIGHT);
                 compositeAnimationId = requestAnimationFrame(drawFrame);
             };
 
@@ -320,7 +324,7 @@
             try {
                 log('📷 카메라 권한 요청 중...');
                 cameraStream = await navigator.mediaDevices.getUserMedia({
-                    video: { width: { ideal: 1280 }, height: { ideal: 720 }, aspectRatio: 16 / 9 },
+                    video: { width: { ideal: TARGET_WIDTH }, height: { ideal: TARGET_HEIGHT }, aspectRatio: 16 / 9 },
                     audio: false
                 });
                 localVideo.srcObject = cameraStream;
@@ -348,8 +352,8 @@
         // 더미 canvas 스트림 생성
         function createDummyStream() {
             const canvas = document.createElement('canvas');
-            canvas.width = 1280;
-            canvas.height = 720;
+            canvas.width = TARGET_WIDTH;
+            canvas.height = TARGET_HEIGHT;
             const ctx = canvas.getContext('2d');
 
             ctx.fillStyle = '#1a1a1a';
