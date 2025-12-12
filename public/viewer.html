@@ -131,6 +131,35 @@
             ctx.fill();
         }
 
+        function appendToStroke(stroke, normalizedPoint, { isStart = false } = {}) {
+            const canvasWidth = overlayCanvas.width;
+            const canvasHeight = overlayCanvas.height;
+            const toCanvasPoint = (p) => ({ x: p.x * canvasWidth, y: p.y * canvasHeight });
+
+            overlayCtx.save();
+            overlayCtx.strokeStyle = stroke.color;
+            overlayCtx.fillStyle = stroke.color;
+            overlayCtx.lineWidth = 3;
+            overlayCtx.lineCap = 'round';
+            overlayCtx.lineJoin = 'round';
+
+            const totalPoints = stroke.points.length;
+            const currentPoint = toCanvasPoint(normalizedPoint);
+
+            if (totalPoints <= 1 || isStart) {
+                drawPoint(currentPoint, overlayCtx);
+                overlayCtx.restore();
+                return;
+            }
+
+            const prevPoint = toCanvasPoint(stroke.points[totalPoints - 2]);
+            overlayCtx.beginPath();
+            overlayCtx.moveTo(prevPoint.x, prevPoint.y);
+            overlayCtx.lineTo(currentPoint.x, currentPoint.y);
+            overlayCtx.stroke();
+            overlayCtx.restore();
+        }
+
         function renderAllStrokes() {
             const canvasWidth = overlayCanvas.width;
             const canvasHeight = overlayCanvas.height;
@@ -201,7 +230,7 @@
                 finalizeStroke(strokeKey);
             }
 
-            renderAllStrokes();
+            appendToStroke(stroke, normalizedPoint, { isStart });
         }
 
         function sendAnnotationPoint(normalized, { isStart = false, isEnd = false } = {}) {
