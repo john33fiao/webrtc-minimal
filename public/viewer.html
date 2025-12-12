@@ -16,6 +16,14 @@
             cursor: crosshair;
         }
         video { width: 100%; height: 100%; object-fit: contain; }
+        #annotationCanvas {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: auto;
+            z-index: 1;
+        }
         button { padding: 10px 20px; font-size: 16px; margin: 20px; cursor: pointer; }
         #statusBadge {
             margin-top: 8px;
@@ -38,6 +46,7 @@
             letter-spacing: 0.5px;
             text-align: center;
             pointer-events: none;
+            z-index: 2;
         }
     </style>
 </head>
@@ -49,6 +58,7 @@
     <div id="video-container">
         <div id="overlayMessage">판서 대기 상태입니다.</div>
         <video id="remoteVideo" autoplay playsinline></video>
+        <canvas id="annotationCanvas"></canvas>
     </div>
 
     <!-- <script src="/socket.io/socket.io.js"></script> -->
@@ -60,11 +70,70 @@
         const statusBadge = document.getElementById('statusBadge');
         const overlayMessage = document.getElementById('overlayMessage');
         let peerConnection;
+        let isDrawing = false;
+        let lastPoint = null;
+        const remoteStrokeState = new Map();
+
+        const overlayCanvas = document.getElementById('annotationCanvas');
+        const overlayCtx = overlayCanvas.getContext('2d');
 
         // 기본 상태: 판서 대기
         const state = {
             annotation: 'waiting', // waiting | active
         };
+
+        function resizeCanvas() {
+            const rect = videoContainer.getBoundingClientRect();
+            overlayCanvas.width = rect.width;
+            overlayCanvas.height = rect.height;
+            overlayCtx.strokeStyle = '#0000FF';
+            overlayCtx.lineWidth = 3;
+            overlayCtx.lineCap = 'round';
+            overlayCtx.lineJoin = 'round';
+        }
+
+        function getNormalizedCoords(event) {
+            const rect = overlayCanvas.getBoundingClientRect();
+            const x = (event.clientX - rect.left) / rect.width;
+            const y = (event.clientY - rect.top) / rect.height;
+            return {
+                x: Number(x.toFixed(4)),
+                y: Number(y.toFixed(4)),
+            };
+        }
+
+        function denormalizeCoords({ x, y }) {
+            return {
+                x: x * overlayCanvas.width,
+                y: y * overlayCanvas.height,
+            };
+        }
+
+        function drawStrokeSegment(from, to) {
+            overlayCtx.beginPath();
+            overlayCtx.moveTo(from.x, from.y);
+            overlayCtx.lineTo(to.x, to.y);
+            overlayCtx.stroke();
+        }
+
+        function drawPoint(point) {
+            overlayCtx.beginPath();
+            overlayCtx.arc(point.x, point.y, 2, 0, Math.PI * 2);
+            overlayCtx.fillStyle = '#0000FF';
+            overlayCtx.fill();
+        }
+
+        function sendAnnotationPoint(normalized) {
+            const payload = {
+                x: normalized.x,
+                y: normalized.y,
+                source: 'viewer',
+                createdAt: Date.now(),
+                kind: 'annotation-point',
+            };
+            socket.emit('annotation:point', payload);
+            console.log('[annotation] sent', payload);
+        }
 
         function updateAnnotationState(nextState) {
             state.annotation = nextState;
@@ -79,6 +148,8 @@
         }
 
         updateAnnotationState('waiting');
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
 
         // WebRTC 설정: 로컬망 환경만 사용하므로 외부 STUN 서버 없이 구성
         const rtcConfig = {
@@ -91,30 +162,48 @@
             socket.emit('request_start_camera');
         });
 
-        // 2. 마우스 입력 (드래그/클릭) 좌표 전송
+        // 2. 마우스 입력 (드래그/클릭) 좌표 전송 및 로컬 렌더링
         // 영상 내부에서의 상대 좌표(0.0 ~ 1.0)로 변환하여 전송해야 해상도가 달라도 정확함
-        videoContainer.addEventListener('mousedown', (e) => {
-            const rect = videoContainer.getBoundingClientRect();
-            const x = (e.clientX - rect.left) / rect.width; // 0.0 ~ 1.0
-            const y = (e.clientY - rect.top) / rect.height; // 0.0 ~ 1.0
+        overlayCanvas.addEventListener('mousedown', (e) => {
+            const normalized = getNormalizedCoords(e);
+            const canvasPoint = denormalizeCoords(normalized);
+            isDrawing = true;
+            lastPoint = canvasPoint;
+            drawPoint(canvasPoint);
+            updateAnnotationState('active');
+            sendAnnotationPoint(normalized);
+        });
 
-            const payload = {
-                x: Number(x.toFixed(4)),
-                y: Number(y.toFixed(4)),
-                source: 'viewer',
-                createdAt: Date.now(),
-                kind: 'annotation-point',
-            };
+        overlayCanvas.addEventListener('mousemove', (e) => {
+            if (!isDrawing) return;
+            const normalized = getNormalizedCoords(e);
+            const canvasPoint = denormalizeCoords(normalized);
+            drawStrokeSegment(lastPoint, canvasPoint);
+            lastPoint = canvasPoint;
+            sendAnnotationPoint(normalized);
+        });
 
-            // 판서 좌표는 Socket.IO 채널을 재사용하여 전달한다 (RTCDataChannel 없음)
-            socket.emit('annotation:point', payload);
-            console.log('[annotation] sent', payload);
+        ['mouseup', 'mouseleave'].forEach((eventName) => {
+            overlayCanvas.addEventListener(eventName, () => {
+                isDrawing = false;
+                lastPoint = null;
+            });
         });
 
         // 서버/상대 클라이언트에서 전달된 판서 좌표 수신
         socket.on('annotation:point', (payload) => {
             console.log('[annotation] received', payload);
-            // TODO: 이 좌표를 캔버스 오버레이에 렌더링하는 로직을 연결
+            const canvasPoint = denormalizeCoords(payload);
+            const strokeKey = payload.source || 'peer';
+            const previousPoint = remoteStrokeState.get(strokeKey);
+
+            if (previousPoint) {
+                drawStrokeSegment(previousPoint, canvasPoint);
+            } else {
+                drawPoint(canvasPoint);
+            }
+
+            remoteStrokeState.set(strokeKey, canvasPoint);
         });
 
         // 3. WebRTC Signaling 처리
