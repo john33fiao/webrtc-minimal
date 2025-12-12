@@ -561,6 +561,7 @@
                 createdAt: Date.now(),
                 kind: 'annotation-point',
                 isStart,
+                color: currentColor,
             };
             socket.emit('annotation:point', payload);
             log(`✏️ 판서 좌표 전송: ${payload.x}, ${payload.y}`);
@@ -575,14 +576,16 @@
             }
             const previousPoint = remoteStrokeState.get(strokeKey);
 
+            const strokeColor = payload.color || '#0000FF';
+
             drawCtx.save();
             drawCtx.globalAlpha = 0.85;
-            drawCtx.strokeStyle = '#0000FF';
-            drawCtx.fillStyle = '#0000FF';
+            drawCtx.strokeStyle = strokeColor;
+            drawCtx.fillStyle = strokeColor;
 
             if (previousPoint && !payload.isStart) {
                 drawCtx.beginPath();
-                drawCtx.moveTo(previousPoint.x, previousPoint.y);
+                drawCtx.moveTo(previousPoint.point.x, previousPoint.point.y);
                 drawCtx.lineTo(canvasPoint.x, canvasPoint.y);
                 drawCtx.stroke();
             } else {
@@ -592,7 +595,7 @@
             }
 
             drawCtx.restore();
-            remoteStrokeState.set(strokeKey, canvasPoint);
+            remoteStrokeState.set(strokeKey, { point: canvasPoint, color: strokeColor });
         });
 
         // ... (나머지 WebRTC 관련 코드는 기존과 동일, startStreaming 함수 등) ...
