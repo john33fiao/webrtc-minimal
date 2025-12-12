@@ -348,6 +348,7 @@
         let isDrawing = false;
         let isAnnotationEnabled = false;
         let currentColor = '#5eead4';
+        const remoteStrokeState = new Map();
 
         // 로컬망 환경 전용: 외부 STUN 서버 없이 ICE 후보를 교환
         const rtcConfig = {
@@ -378,13 +379,33 @@
             };
         }
 
+        function getNormalizedPos(evt) {
+            const rect = drawCanvas.getBoundingClientRect();
+            const x = (evt.clientX - rect.left) / rect.width;
+            const y = (evt.clientY - rect.top) / rect.height;
+            return {
+                x: Number(x.toFixed(4)),
+                y: Number(y.toFixed(4)),
+            };
+        }
+
+        function denormalizePos({ x, y }) {
+            const rect = drawCanvas.getBoundingClientRect();
+            return {
+                x: x * rect.width,
+                y: y * rect.height,
+            };
+        }
+
         function startDrawing(evt) {
             if (!isAnnotationEnabled) return;
             evt.preventDefault();
             isDrawing = true;
             const pos = getCanvasPos(evt);
+            const normalized = getNormalizedPos(evt);
             drawCtx.beginPath();
             drawCtx.moveTo(pos.x, pos.y);
+            sendAnnotationPoint(normalized.x, normalized.y);
         }
 
         function draw(evt) {
@@ -393,6 +414,8 @@
             const pos = getCanvasPos(evt);
             drawCtx.lineTo(pos.x, pos.y);
             drawCtx.stroke();
+            const normalized = getNormalizedPos(evt);
+            sendAnnotationPoint(normalized.x, normalized.y);
         }
 
         function endDrawing() {
@@ -466,8 +489,8 @@
         // 판서 좌표 송수신: RTCDataChannel 없이 Socket.IO 채널을 재사용
         function sendAnnotationPoint(x, y) {
             const payload = {
-                x: Number(x.toFixed(4)),
-                y: Number(y.toFixed(4)),
+                x: x,
+                y: y,
                 source: 'camera',
                 createdAt: Date.now(),
                 kind: 'annotation-point',
@@ -478,7 +501,28 @@
 
         socket.on('annotation:point', (payload) => {
             log(`🖌️ 판서 좌표 수신: ${payload.x}, ${payload.y} (from ${payload.source})`);
-            // TODO: 캔버스 오버레이에 렌더링 로직 연결 예정
+            const canvasPoint = denormalizePos(payload);
+            const strokeKey = payload.source || 'peer';
+            const previousPoint = remoteStrokeState.get(strokeKey);
+
+            drawCtx.save();
+            drawCtx.globalAlpha = 0.85;
+            drawCtx.strokeStyle = '#5eead4';
+            drawCtx.fillStyle = '#5eead4';
+
+            if (previousPoint) {
+                drawCtx.beginPath();
+                drawCtx.moveTo(previousPoint.x, previousPoint.y);
+                drawCtx.lineTo(canvasPoint.x, canvasPoint.y);
+                drawCtx.stroke();
+            } else {
+                drawCtx.beginPath();
+                drawCtx.arc(canvasPoint.x, canvasPoint.y, 2, 0, Math.PI * 2);
+                drawCtx.fill();
+            }
+
+            drawCtx.restore();
+            remoteStrokeState.set(strokeKey, canvasPoint);
         });
 
         // ... (나머지 WebRTC 관련 코드는 기존과 동일, startStreaming 함수 등) ...
