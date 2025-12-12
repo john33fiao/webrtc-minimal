@@ -93,6 +93,7 @@
     let peerConnection;
     let localStream;
     let isStreaming = false;
+    let isStarting = false;
     let isDrawingMode = false;
 
     const rtcConfig = {
@@ -108,6 +109,7 @@
         btnToggleStream.textContent = isStreaming ? '촬영 종료' : '촬영 시작';
         btnToggleStream.classList.toggle('is-active', isStreaming);
         btnToggleStream.classList.toggle('danger', !isStreaming);
+        btnToggleStream.disabled = isStarting;
 
         btnToggleDrawing.textContent = isDrawingMode ? '판서 종료' : '판서 시작';
         btnToggleDrawing.classList.toggle('is-active', isDrawingMode);
@@ -146,7 +148,9 @@
     });
 
     async function startStreaming() {
-        if (isStreaming) return;
+        if (isStreaming || isStarting) return;
+        isStarting = true;
+        updateOverlayUI();
         try {
             log("📷 카메라 권한 요청 중...");
             localStream = await navigator.mediaDevices.getUserMedia({
@@ -164,12 +168,16 @@
             socket.emit('offer', offer);
             log("📡 Offer 전송 완료");
             setStreamingState(true);
+            isStarting = false;
+            updateOverlayUI();
         } catch (err) {
             console.error(err);
             log("❌ 카메라 실패: " + err.name + " - " + err.message);
             log("💡 더미 화면을 생성하여 송출합니다...");
             createDummyStream();
             setStreamingState(true);
+            isStarting = false;
+            updateOverlayUI();
         }
     }
 
@@ -190,6 +198,8 @@
         localVideo.srcObject = null;
         log("🛑 촬영을 종료했습니다.");
         setStreamingState(false);
+        isStarting = false;
+        updateOverlayUI();
     }
 
     function setStreamingState(value) {
