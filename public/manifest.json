@@ -1,0 +1,25 @@
+{
+  "name": "WebRTC 카메라 클라이언트",
+  "short_name": "카메라",
+  "description": "LAN 환경에서 WebRTC로 영상을 송출하는 카메라 페이지",
+  "start_url": "/public/camera.html",
+  "scope": "/public/",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#0b1021",
+  "theme_color": "#0b1021",
+  "icons": [
+    {
+      "src": "/public/icons/camera-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/public/icons/camera-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
