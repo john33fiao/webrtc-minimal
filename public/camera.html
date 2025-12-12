@@ -161,6 +161,35 @@
             ctx.fill();
         }
 
+        function appendToStroke(stroke, normalizedPoint, { isStart = false } = {}) {
+            const rect = drawCanvas.getBoundingClientRect();
+            const toCanvasPoint = (p) => ({ x: p.x * rect.width, y: p.y * rect.height });
+
+            drawCtx.save();
+            drawCtx.globalAlpha = stroke.isRemote ? 0.85 : 1;
+            drawCtx.strokeStyle = stroke.color;
+            drawCtx.fillStyle = stroke.color;
+            drawCtx.lineWidth = 3;
+            drawCtx.lineCap = 'round';
+            drawCtx.lineJoin = 'round';
+
+            const totalPoints = stroke.points.length;
+            const currentPoint = toCanvasPoint(normalizedPoint);
+
+            if (totalPoints <= 1 || isStart) {
+                drawPoint(currentPoint, drawCtx);
+                drawCtx.restore();
+                return;
+            }
+
+            const prevPoint = toCanvasPoint(stroke.points[totalPoints - 2]);
+            drawCtx.beginPath();
+            drawCtx.moveTo(prevPoint.x, prevPoint.y);
+            drawCtx.lineTo(currentPoint.x, currentPoint.y);
+            drawCtx.stroke();
+            drawCtx.restore();
+        }
+
         function renderAllStrokes() {
             const rect = drawCanvas.getBoundingClientRect();
             const toCanvasPoint = (p) => ({
@@ -231,7 +260,7 @@
                 finalizeStroke(strokeKey);
             }
 
-            renderAllStrokes();
+            appendToStroke(stroke, normalizedPoint, { isStart });
         }
 
         function startDrawing(evt) {
