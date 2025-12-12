@@ -82,8 +82,48 @@
         } catch (err) {
             console.error(err);
             log("❌ 카메라 실패: " + err.name + " - " + err.message);
-            log("💡 팁: http:// 접속은 보안상 카메라는 막힙니다.");
+
+            // 카메라 권한 없으면 더미 화면 송출
+            log("💡 더미 화면을 생성하여 송출합니다...");
+            createDummyStream();
         }
+    }
+
+    // 더미 canvas 스트림 생성
+    function createDummyStream() {
+        const canvas = document.createElement('canvas');
+        canvas.width = 1280;
+        canvas.height = 720;
+        const ctx = canvas.getContext('2d');
+
+        // 배경 색상
+        ctx.fillStyle = '#1a1a1a';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // 텍스트 그리기
+        ctx.fillStyle = '#ff0000';
+        ctx.font = 'bold 60px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('카메라 권한이 없습니다', canvas.width / 2, canvas.height / 2 - 60);
+
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '30px Arial';
+        ctx.fillText('(Dummy Stream)', canvas.width / 2, canvas.height / 2 + 60);
+
+        // canvas를 스트림으로 변환
+        localStream = canvas.captureStream(30); // 30 FPS
+        localVideo.srcObject = localStream;
+
+        createPeerConnection();
+        localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+
+        const offer = peerConnection.createOffer();
+        offer.then(off => {
+            peerConnection.setLocalDescription(off);
+            socket.emit('offer', off);
+            log("📡 Offer 전송 완료 (Dummy Stream)");
+        });
     }
     
     // ... (createPeerConnection 등 나머지 함수 그대로) ...
