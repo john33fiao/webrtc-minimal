@@ -148,6 +148,61 @@
             background: radial-gradient(circle at 50% 50%, rgba(94, 234, 212, 0.04), transparent 35%);
         }
 
+        .overlay-controls {
+            position: absolute;
+            left: 12px;
+            bottom: 12px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            padding: 10px 12px;
+            background: rgba(0, 0, 0, 0.35);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 12px;
+            backdrop-filter: blur(10px);
+        }
+
+        .pill-button {
+            border-radius: 999px;
+            padding: 10px 14px;
+            font-weight: 700;
+            box-shadow: 0 10px 25px rgba(34, 211, 238, 0.25);
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            border: 1px solid rgba(94, 234, 212, 0.5);
+        }
+
+        .pill-button.active {
+            background: linear-gradient(135deg, #22d3ee, #0ea5e9);
+            color: #0b1021;
+            box-shadow: 0 12px 30px rgba(14, 165, 233, 0.35);
+        }
+
+        .palette {
+            display: flex;
+            gap: 8px;
+        }
+
+        .palette button {
+            width: 32px;
+            height: 32px;
+            border-radius: 10px;
+            border: 2px solid transparent;
+            padding: 0;
+            box-shadow: none;
+            transition: transform 0.1s ease, border-color 0.15s ease;
+        }
+
+        .palette button:hover {
+            transform: translateY(-1px);
+        }
+
+        .palette button.active {
+            border-color: #fff;
+            box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.15);
+        }
+
         .side-panel {
             background: rgba(255, 255, 255, 0.02);
             border: 1px solid rgba(255, 255, 255, 0.06);
@@ -247,6 +302,15 @@
                     <video id="localVideo" autoplay playsinline muted></video>
                     <canvas id="drawCanvas"></canvas>
                     <div class="overlay-hint">영상 위에 판서 레이어가 자리합니다</div>
+                    <div class="overlay-controls">
+                        <button id="btnToggleDraw" class="pill-button">✏️ 판서 시작</button>
+                        <div class="palette" aria-label="색상 팔레트">
+                            <button class="palette-color" data-color="#5eead4" style="background:#5eead4" aria-label="민트"></button>
+                            <button class="palette-color" data-color="#f97316" style="background:#f97316" aria-label="오렌지"></button>
+                            <button class="palette-color" data-color="#22d3ee" style="background:#22d3ee" aria-label="시안"></button>
+                            <button class="palette-color" data-color="#a855f7" style="background:#a855f7" aria-label="퍼플"></button>
+                        </div>
+                    </div>
                 </div>
             </section>
 
@@ -275,10 +339,15 @@
         const logDiv = document.getElementById('log');
         const drawCanvas = document.getElementById('drawCanvas');
         const videoShell = document.querySelector('.video-shell');
+        const overlayHint = document.querySelector('.overlay-hint');
+        const toggleDrawBtn = document.getElementById('btnToggleDraw');
+        const paletteButtons = Array.from(document.querySelectorAll('.palette-color'));
         const drawCtx = drawCanvas.getContext('2d');
         let peerConnection;
         let localStream;
         let isDrawing = false;
+        let isAnnotationEnabled = false;
+        let currentColor = '#5eead4';
 
         // 로컬망 환경 전용: 외부 STUN 서버 없이 ICE 후보를 교환
         const rtcConfig = {
@@ -297,7 +366,7 @@
             drawCtx.scale(dpr, dpr);
             drawCtx.lineCap = 'round';
             drawCtx.lineJoin = 'round';
-            drawCtx.strokeStyle = '#5eead4';
+            drawCtx.strokeStyle = currentColor;
             drawCtx.lineWidth = 3;
         }
 
@@ -310,6 +379,7 @@
         }
 
         function startDrawing(evt) {
+            if (!isAnnotationEnabled) return;
             evt.preventDefault();
             isDrawing = true;
             const pos = getCanvasPos(evt);
@@ -331,7 +401,29 @@
             drawCtx.closePath();
         }
 
+        function setDrawingColor(color) {
+            currentColor = color;
+            drawCtx.strokeStyle = color;
+            paletteButtons.forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.color === color);
+            });
+        }
+
+        function applyAnnotationState(enabled) {
+            isAnnotationEnabled = enabled;
+            drawCanvas.style.pointerEvents = enabled ? 'auto' : 'none';
+            toggleDrawBtn.classList.toggle('active', enabled);
+            toggleDrawBtn.textContent = enabled ? '✏️ 판서 종료' : '✏️ 판서 시작';
+            overlayHint.textContent = enabled ? '판서 모드 활성화됨' : '판서 대기 상태';
+        }
+
+        function toggleAnnotation() {
+            applyAnnotationState(!isAnnotationEnabled);
+        }
+
         resizeCanvas();
+        setDrawingColor(currentColor);
+        applyAnnotationState(false);
         window.addEventListener('resize', resizeCanvas);
 
         drawCanvas.addEventListener('pointerdown', startDrawing);
@@ -339,6 +431,11 @@
         drawCanvas.addEventListener('pointerup', endDrawing);
         drawCanvas.addEventListener('pointerleave', endDrawing);
         drawCanvas.addEventListener('pointercancel', endDrawing);
+
+        toggleDrawBtn.addEventListener('click', toggleAnnotation);
+        paletteButtons.forEach(btn => {
+            btn.addEventListener('click', () => setDrawingColor(btn.dataset.color));
+        });
 
         // [중요] 디버깅을 위한 로그 함수
         function log(msg) {
