@@ -75,6 +75,7 @@
         let isDrawing = false;
         let lastPoint = null;
         const remoteStrokeState = new Map();
+        const viewerStrokeColor = '#0000FF';
 
         const overlayCanvas = document.getElementById('annotationCanvas');
         const overlayCtx = overlayCanvas.getContext('2d');
@@ -88,7 +89,7 @@
             const rect = videoContainer.getBoundingClientRect();
             overlayCanvas.width = rect.width;
             overlayCanvas.height = rect.height;
-            overlayCtx.strokeStyle = '#0000FF';
+            overlayCtx.strokeStyle = viewerStrokeColor;
             overlayCtx.lineWidth = 3;
             overlayCtx.lineCap = 'round';
             overlayCtx.lineJoin = 'round';
@@ -121,7 +122,7 @@
         function drawPoint(point) {
             overlayCtx.beginPath();
             overlayCtx.arc(point.x, point.y, 2, 0, Math.PI * 2);
-            overlayCtx.fillStyle = '#0000FF';
+            overlayCtx.fillStyle = overlayCtx.strokeStyle;
             overlayCtx.fill();
         }
 
@@ -133,6 +134,7 @@
                 createdAt: Date.now(),
                 kind: 'annotation-point',
                 isStart,
+                color: viewerStrokeColor,
             };
             socket.emit('annotation:point', payload);
             console.log('[annotation] sent', payload);
@@ -198,18 +200,25 @@
             console.log('[annotation] received', payload);
             const canvasPoint = denormalizeCoords(payload);
             const strokeKey = payload.source || 'peer';
+            const strokeColor = payload.color || '#0000FF';
+
             if (payload.isStart) {
                 remoteStrokeState.delete(strokeKey);
             }
             const previousPoint = remoteStrokeState.get(strokeKey);
 
+            overlayCtx.save();
+            overlayCtx.strokeStyle = strokeColor;
+            overlayCtx.fillStyle = strokeColor;
+
             if (previousPoint && !payload.isStart) {
-                drawStrokeSegment(previousPoint, canvasPoint);
+                drawStrokeSegment(previousPoint.point, canvasPoint);
             } else {
                 drawPoint(canvasPoint);
             }
 
-            remoteStrokeState.set(strokeKey, canvasPoint);
+            overlayCtx.restore();
+            remoteStrokeState.set(strokeKey, { point: canvasPoint, color: strokeColor });
         });
 
         // 3. WebRTC Signaling 처리
