@@ -80,9 +80,9 @@
 
         updateAnnotationState('waiting');
 
-        // WebRTC 설정 (Google 무료 STUN 서버 사용)
+        // WebRTC 설정: 로컬망 환경만 사용하므로 외부 STUN 서버 없이 구성
         const rtcConfig = {
-            iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+            iceServers: []
         };
 
         // 1. 촬영 시작 요청 버튼
