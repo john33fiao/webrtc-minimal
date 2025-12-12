@@ -87,6 +87,7 @@
             overlayCanvas.width = rect.width;
             overlayCanvas.height = rect.height;
             overlayCtx.strokeStyle = '#0000FF';
+            overlayCtx.fillStyle = '#0000FF';
             overlayCtx.lineWidth = 3;
             overlayCtx.lineCap = 'round';
             overlayCtx.lineJoin = 'round';
@@ -110,6 +111,7 @@
         }
 
         function drawStrokeSegment(from, to) {
+            overlayCtx.strokeStyle = '#0000FF';
             overlayCtx.beginPath();
             overlayCtx.moveTo(from.x, from.y);
             overlayCtx.lineTo(to.x, to.y);
@@ -188,6 +190,12 @@
                 isDrawing = false;
                 lastPoint = null;
             });
+        });
+
+        window.addEventListener('mouseup', () => {
+            // 캔버스 영역 밖에서 마우스를 놓는 경우도 드래그 상태를 해제한다.
+            isDrawing = false;
+            lastPoint = null;
         });
 
         // 서버/상대 클라이언트에서 전달된 판서 좌표 수신
