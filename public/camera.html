@@ -472,7 +472,7 @@
             const normalized = getNormalizedPos(evt);
             drawCtx.beginPath();
             drawCtx.moveTo(pos.x, pos.y);
-            sendAnnotationPoint(normalized.x, normalized.y);
+            sendAnnotationPoint(normalized.x, normalized.y, true);
         }
 
         function draw(evt) {
@@ -554,13 +554,14 @@
         });
 
         // 판서 좌표 송수신: RTCDataChannel 없이 Socket.IO 채널을 재사용
-        function sendAnnotationPoint(x, y) {
+        function sendAnnotationPoint(x, y, isStart = false) {
             const payload = {
                 x: x,
                 y: y,
                 source: 'camera',
                 createdAt: Date.now(),
                 kind: 'annotation-point',
+                isStart,
             };
             socket.emit('annotation:point', payload);
             log(`✏️ 판서 좌표 전송: ${payload.x}, ${payload.y}`);
@@ -570,6 +571,9 @@
             log(`🖌️ 판서 좌표 수신: ${payload.x}, ${payload.y} (from ${payload.source})`);
             const canvasPoint = denormalizePos(payload);
             const strokeKey = payload.source || 'peer';
+            if (payload.isStart) {
+                remoteStrokeState.delete(strokeKey);
+            }
             const previousPoint = remoteStrokeState.get(strokeKey);
 
             drawCtx.save();
@@ -577,7 +581,7 @@
             drawCtx.strokeStyle = '#0000FF';
             drawCtx.fillStyle = '#0000FF';
 
-            if (previousPoint) {
+            if (previousPoint && !payload.isStart) {
                 drawCtx.beginPath();
                 drawCtx.moveTo(previousPoint.x, previousPoint.y);
                 drawCtx.lineTo(canvasPoint.x, canvasPoint.y);
