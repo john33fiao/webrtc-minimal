@@ -94,18 +94,28 @@
         // 2. 마우스 입력 (드래그/클릭) 좌표 전송
         // 영상 내부에서의 상대 좌표(0.0 ~ 1.0)로 변환하여 전송해야 해상도가 달라도 정확함
         videoContainer.addEventListener('mousedown', (e) => {
-            sendCoordinates(e);
-        });
-
-        function sendCoordinates(e) {
             const rect = videoContainer.getBoundingClientRect();
             const x = (e.clientX - rect.left) / rect.width; // 0.0 ~ 1.0
             const y = (e.clientY - rect.top) / rect.height; // 0.0 ~ 1.0
-            
-            // 좌표 전송
-            socket.emit('send_input_coordinates', { x: x.toFixed(4), y: y.toFixed(4) });
-            console.log(`Sent Coords: ${x.toFixed(4)}, ${y.toFixed(4)}`);
-        }
+
+            const payload = {
+                x: Number(x.toFixed(4)),
+                y: Number(y.toFixed(4)),
+                source: 'viewer',
+                createdAt: Date.now(),
+                kind: 'annotation-point',
+            };
+
+            // 판서 좌표는 Socket.IO 채널을 재사용하여 전달한다 (RTCDataChannel 없음)
+            socket.emit('annotation:point', payload);
+            console.log('[annotation] sent', payload);
+        });
+
+        // 서버/상대 클라이언트에서 전달된 판서 좌표 수신
+        socket.on('annotation:point', (payload) => {
+            console.log('[annotation] received', payload);
+            // TODO: 이 좌표를 캔버스 오버레이에 렌더링하는 로직을 연결
+        });
 
         // 3. WebRTC Signaling 처리
         socket.on('offer', async (offer) => {
