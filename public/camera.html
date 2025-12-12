@@ -387,27 +387,50 @@
             });
         });
 
+        function createPeerConnection() {
+            if (peerConnection) {
+                try {
+                    peerConnection.onicecandidate = null;
+                    peerConnection.close();
+                } catch (e) {
+                    console.warn('기존 PeerConnection 정리 중 경고', e);
+                }
+            }
+
+            peerConnection = new RTCPeerConnection(rtcConfig);
+            peerConnection.onicecandidate = (event) => {
+                if (event.candidate) socket.emit('ice-candidate', event.candidate);
+            };
+        }
+
+        async function negotiateWithStream(stream) {
+            if (!stream) return;
+
+            createPeerConnection();
+            stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));
+
+            const offer = await peerConnection.createOffer();
+            await peerConnection.setLocalDescription(offer);
+            socket.emit('offer', offer);
+            log('📡 Offer 전송 완료');
+        }
+
         async function startStreaming() {
-            if (outboundStream) return;
             videoContainer.classList.add('streaming');
             try {
-                log('📷 카메라 권한 요청 중...');
-                cameraStream = await navigator.mediaDevices.getUserMedia({
-                    video: { width: { ideal: TARGET_WIDTH }, height: { ideal: TARGET_HEIGHT }, aspectRatio: 16 / 9 },
-                    audio: false
-                });
-                localVideo.srcObject = cameraStream;
-                await waitForVideoReady(localVideo);
-                log('🎥 스트림 획득 성공! WebRTC 연결 시작...');
+                if (!cameraStream) {
+                    log('📷 카메라 권한 요청 중...');
+                    cameraStream = await navigator.mediaDevices.getUserMedia({
+                        video: { width: { ideal: TARGET_WIDTH }, height: { ideal: TARGET_HEIGHT }, aspectRatio: 16 / 9 },
+                        audio: false
+                    });
+                    localVideo.srcObject = cameraStream;
+                    await waitForVideoReady(localVideo);
+                    log('🎥 스트림 획득 성공! WebRTC 연결 시작...');
+                }
 
                 const mixedStream = startCompositeStream();
-                createPeerConnection();
-                mixedStream.getTracks().forEach(track => peerConnection.addTrack(track, mixedStream));
-
-                const offer = await peerConnection.createOffer();
-                await peerConnection.setLocalDescription(offer);
-                socket.emit('offer', offer);
-                log('📡 Offer 전송 완료');
+                await negotiateWithStream(mixedStream);
 
             } catch (err) {
                 console.error(err);
@@ -440,24 +463,12 @@
 
             outboundStream = canvas.captureStream(30);
             localVideo.srcObject = outboundStream;
-
-            createPeerConnection();
-            outboundStream.getTracks().forEach(track => peerConnection.addTrack(track, outboundStream));
-
-            peerConnection.createOffer().then(off => {
-                peerConnection.setLocalDescription(off);
-                socket.emit('offer', off);
+            negotiateWithStream(outboundStream).then(() => {
                 log('📡 Offer 전송 완료 (Dummy Stream)');
             });
         }
 
-        function createPeerConnection() {
-            peerConnection = new RTCPeerConnection(rtcConfig);
-            peerConnection.onicecandidate = (event) => {
-                if (event.candidate) socket.emit('ice-candidate', event.candidate);
-            };
-        }
-        socket.on('answer', (ans) => peerConnection.setRemoteDescription(ans));
+        socket.on('answer', (ans) => peerConnection && peerConnection.setRemoteDescription(ans));
         socket.on('ice-candidate', (can) => peerConnection && peerConnection.addIceCandidate(can));
 
         // 영상 영역 클릭 시 촬영 시작
