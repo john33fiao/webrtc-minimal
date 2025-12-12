@@ -297,6 +297,24 @@
             startStreaming();
         });
 
+        // 판서 좌표 송수신: RTCDataChannel 없이 Socket.IO 채널을 재사용
+        function sendAnnotationPoint(x, y) {
+            const payload = {
+                x: Number(x.toFixed(4)),
+                y: Number(y.toFixed(4)),
+                source: 'camera',
+                createdAt: Date.now(),
+                kind: 'annotation-point',
+            };
+            socket.emit('annotation:point', payload);
+            log(`✏️ 판서 좌표 전송: ${payload.x}, ${payload.y}`);
+        }
+
+        socket.on('annotation:point', (payload) => {
+            log(`🖌️ 판서 좌표 수신: ${payload.x}, ${payload.y} (from ${payload.source})`);
+            // TODO: 캔버스 오버레이에 렌더링 로직 연결 예정
+        });
+
         // ... (나머지 WebRTC 관련 코드는 기존과 동일, startStreaming 함수 등) ...
 
         async function startStreaming() {

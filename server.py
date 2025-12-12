@@ -53,8 +53,18 @@ async def on_request_start(sid):
 
 @sio.on('send_input_coordinates')
 async def on_input_coords(sid, data):
-    # print(f"Input received from {sid}: {data}") 
+    # print(f"Input received from {sid}: {data}")
     await sio.emit('cmd_input_coordinates', data, room='room1', skip_sid=sid)
+
+
+@sio.on('annotation:point')
+async def on_annotation_point(sid, data):
+    """중앙에서 판서 좌표를 릴레이한다.
+
+    현재는 별도의 RTCDataChannel을 사용하지 않고 Socket.IO 채널을 재사용한다.
+    좌표는 정규화된 값(0~1)을 기대하며, 동일 룸의 다른 피어에게만 전달된다.
+    """
+    await sio.emit('annotation:point', data, room='room1', skip_sid=sid)
 
 # ---------------------------------------------------------
 # 4. 서버 실행 (HTTPS 설정 추가)
