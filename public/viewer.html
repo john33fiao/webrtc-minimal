@@ -16,6 +16,13 @@
             cursor: crosshair;
         }
         video { width: 100%; height: 100%; object-fit: contain; }
+        #annotationCanvas {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 2;
+        }
         button { padding: 10px 20px; font-size: 16px; margin: 20px; cursor: pointer; }
         #statusBadge {
             margin-top: 8px;
@@ -38,6 +45,7 @@
             letter-spacing: 0.5px;
             text-align: center;
             pointer-events: none;
+            z-index: 3;
         }
     </style>
 </head>
@@ -49,6 +57,7 @@
     <div id="video-container">
         <div id="overlayMessage">판서 대기 상태입니다.</div>
         <video id="remoteVideo" autoplay playsinline></video>
+        <canvas id="annotationCanvas"></canvas>
     </div>
 
     <!-- <script src="/socket.io/socket.io.js"></script> -->
@@ -57,9 +66,13 @@
         const socket = io();
         const remoteVideo = document.getElementById('remoteVideo');
         const videoContainer = document.getElementById('video-container');
+        const annotationCanvas = document.getElementById('annotationCanvas');
+        const annotationCtx = annotationCanvas.getContext('2d');
         const statusBadge = document.getElementById('statusBadge');
         const overlayMessage = document.getElementById('overlayMessage');
         let peerConnection;
+        let isDrawing = false;
+        let lastPoint = null;
 
         // 기본 상태: 판서 대기
         const state = {
@@ -91,10 +104,41 @@
             socket.emit('request_start_camera');
         });
 
+        function resizeAnnotationCanvas() {
+            const rect = videoContainer.getBoundingClientRect();
+            const devicePixelRatio = window.devicePixelRatio || 1;
+            annotationCanvas.width = rect.width * devicePixelRatio;
+            annotationCanvas.height = rect.height * devicePixelRatio;
+            annotationCanvas.style.width = `${rect.width}px`;
+            annotationCanvas.style.height = `${rect.height}px`;
+            annotationCtx.setTransform(1, 0, 0, 1, 0, 0);
+            annotationCtx.scale(devicePixelRatio, devicePixelRatio);
+            annotationCtx.lineJoin = 'round';
+            annotationCtx.lineCap = 'round';
+            annotationCtx.strokeStyle = 'rgba(255, 255, 0, 0.9)';
+            annotationCtx.lineWidth = 3;
+        }
+
+        window.addEventListener('resize', resizeAnnotationCanvas);
+        resizeAnnotationCanvas();
+
         // 2. 마우스 입력 (드래그/클릭) 좌표 전송
         // 영상 내부에서의 상대 좌표(0.0 ~ 1.0)로 변환하여 전송해야 해상도가 달라도 정확함
         videoContainer.addEventListener('mousedown', (e) => {
+            startDrawing(e);
             sendCoordinates(e);
+        });
+
+        videoContainer.addEventListener('mousemove', (e) => {
+            drawStroke(e);
+        });
+
+        videoContainer.addEventListener('mouseup', () => {
+            endDrawing();
+        });
+
+        videoContainer.addEventListener('mouseleave', () => {
+            endDrawing();
         });
 
         function sendCoordinates(e) {
@@ -105,6 +149,36 @@
             // 좌표 전송
             socket.emit('send_input_coordinates', { x: x.toFixed(4), y: y.toFixed(4) });
             console.log(`Sent Coords: ${x.toFixed(4)}, ${y.toFixed(4)}`);
+        }
+
+        function getCanvasPoint(event) {
+            const rect = annotationCanvas.getBoundingClientRect();
+            const scaleX = annotationCanvas.width / rect.width;
+            const scaleY = annotationCanvas.height / rect.height;
+            return {
+                x: (event.clientX - rect.left) * scaleX,
+                y: (event.clientY - rect.top) * scaleY,
+            };
+        }
+
+        function startDrawing(event) {
+            isDrawing = true;
+            lastPoint = getCanvasPoint(event);
+            annotationCtx.beginPath();
+            annotationCtx.moveTo(lastPoint.x, lastPoint.y);
+        }
+
+        function drawStroke(event) {
+            if (!isDrawing) return;
+            const point = getCanvasPoint(event);
+            annotationCtx.lineTo(point.x, point.y);
+            annotationCtx.stroke();
+            lastPoint = point;
+        }
+
+        function endDrawing() {
+            isDrawing = false;
+            lastPoint = null;
         }
 
         // 3. WebRTC Signaling 처리
