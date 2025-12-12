@@ -115,7 +115,7 @@
             annotationCtx.scale(devicePixelRatio, devicePixelRatio);
             annotationCtx.lineJoin = 'round';
             annotationCtx.lineCap = 'round';
-            annotationCtx.strokeStyle = 'rgba(255, 255, 0, 0.9)';
+            annotationCtx.strokeStyle = '#0000ff';
             annotationCtx.lineWidth = 3;
         }
 
@@ -166,6 +166,7 @@
             lastPoint = getCanvasPoint(event);
             annotationCtx.beginPath();
             annotationCtx.moveTo(lastPoint.x, lastPoint.y);
+            updateAnnotationState('active');
         }
 
         function drawStroke(event) {
@@ -174,11 +175,13 @@
             annotationCtx.lineTo(point.x, point.y);
             annotationCtx.stroke();
             lastPoint = point;
+            sendCoordinates(event);
         }
 
         function endDrawing() {
             isDrawing = false;
             lastPoint = null;
+            updateAnnotationState('waiting');
         }
 
         // 3. WebRTC Signaling 처리
