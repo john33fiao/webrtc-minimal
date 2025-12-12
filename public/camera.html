@@ -102,6 +102,8 @@
         let currentColor = '#5eead4';
         let lastCanvasPoint = null;
         let lastNormalizedPoint = null;
+        let isStreaming = false;
+        let isStarting = false;
         const STROKE_LIFETIME_MS = 10_000;
         const strokes = [];
         const activeStrokes = new Map();
@@ -372,6 +374,12 @@
         }
 
         async function startStreaming() {
+            if (isStreaming || isStarting) {
+                log('⏯️ 이미 스트리밍 중이거나 시작 대기 상태입니다. 중복 요청을 무시합니다.');
+                return;
+            }
+
+            isStarting = true;
             videoContainer.classList.add('streaming');
             try {
                 if (!cameraStream) {
@@ -387,18 +395,22 @@
 
                 // 판서 오버레이는 각 측에서 별도 캔버스로 렌더링하며, 영상 스트림에 합성하지 않습니다.
                 await negotiateWithStream(cameraStream);
+                isStreaming = true;
+                log('✅ 스트리밍을 시작했습니다.');
 
             } catch (err) {
                 console.error(err);
                 log(`❌ 카메라 실패: ${err.name} - ${err.message}`);
 
                 log('💡 더미 화면을 생성하여 송출합니다...');
-                createDummyStream();
+                await createDummyStream();
+            } finally {
+                isStarting = false;
             }
         }
 
         // 더미 canvas 스트림 생성
-        function createDummyStream() {
+        async function createDummyStream() {
             const canvas = document.createElement('canvas');
             canvas.width = TARGET_WIDTH;
             canvas.height = TARGET_HEIGHT;
@@ -419,9 +431,9 @@
 
             cameraStream = canvas.captureStream(30);
             localVideo.srcObject = cameraStream;
-            negotiateWithStream(cameraStream).then(() => {
-                log('📡 Offer 전송 완료 (Dummy Stream)');
-            });
+            await negotiateWithStream(cameraStream);
+            isStreaming = true;
+            log('📡 Offer 전송 완료 (Dummy Stream)');
         }
 
         socket.on('answer', (ans) => peerConnection && peerConnection.setRemoteDescription(ans));
