@@ -10,9 +10,9 @@
 - [x] 판서 모드 진입 시 근무자 영상 위에 캔버스 레이어 활성화 (camera.html:248 drawCanvas)
 - [x] 마우스/터치 드래그로 선을 그릴 수 있는 기본 판서 도구 구현 (camera.html:336-340 pointer events)
 - [x] 고정 팔레트(예: 3~4개 색상) 색상 선택 도구 제공 (현재 #5eead4 고정)
-- [ ] 판서 내용이 근무자 측에서 영상과 합성되어 WebRTC로 송출되도록 스트림 처리 로직 수정
-  - [ ] `<video>` + `<canvas>`를 하나의 `<canvas>`에 그린 뒤 `canvas.captureStream()`으로 새로운 MediaStream을 생성
-  - [ ] PeerConnection 트랙을 합성 스트림으로 교체하고, 캔버스 리사이즈/좌표 스케일 조정을 처리
+- [x] 판서 내용이 근무자 측에서 영상과 합성되어 WebRTC로 송출되도록 스트림 처리 로직 수정
+  - [x] `<video>` + `<canvas>`를 하나의 `<canvas>`에 그린 뒤 `canvas.captureStream()`으로 새로운 MediaStream을 생성
+  - [x] PeerConnection 트랙을 합성 스트림으로 교체하고, 캔버스 리사이즈/좌표 스케일 조정을 처리
 - [ ] 근무자가 그린 판서 좌표를 서버로 전송
   - [x] sendAnnotationPoint 함수 구현 완료 (camera.html:369)
   - [x] 드래그 이벤트에서 실제로 sendAnnotationPoint 호출하도록 연결

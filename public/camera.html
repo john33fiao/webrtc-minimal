@@ -344,7 +344,11 @@
         const paletteButtons = Array.from(document.querySelectorAll('.palette-color'));
         const drawCtx = drawCanvas.getContext('2d');
         let peerConnection;
-        let localStream;
+        let cameraStream;
+        let outboundStream;
+        let compositeCanvas;
+        let compositeCtx;
+        let compositeAnimationId;
         let isDrawing = false;
         let isAnnotationEnabled = false;
         let currentColor = '#5eead4';
@@ -354,6 +358,69 @@
         const rtcConfig = {
             iceServers: []
         };
+
+        function getVideoResolution() {
+            const track = cameraStream?.getVideoTracks()[0];
+            const settings = track?.getSettings?.() || {};
+            const width = settings.width || localVideo.videoWidth || 1280;
+            const height = settings.height || localVideo.videoHeight || 720;
+            return { width, height };
+        }
+
+        function ensureCompositeCanvas() {
+            if (!compositeCanvas) {
+                compositeCanvas = document.createElement('canvas');
+                compositeCtx = compositeCanvas.getContext('2d');
+            }
+
+            const { width, height } = getVideoResolution();
+            if (!width || !height) return;
+
+            if (compositeCanvas.width !== width || compositeCanvas.height !== height) {
+                compositeCanvas.width = width;
+                compositeCanvas.height = height;
+            }
+        }
+
+        function startCompositeStream() {
+            ensureCompositeCanvas();
+
+            const drawFrame = () => {
+                const { width, height } = getVideoResolution();
+                if (!width || !height) {
+                    compositeAnimationId = requestAnimationFrame(drawFrame);
+                    return;
+                }
+
+                if (compositeCanvas.width !== width || compositeCanvas.height !== height) {
+                    compositeCanvas.width = width;
+                    compositeCanvas.height = height;
+                }
+
+                compositeCtx.clearRect(0, 0, compositeCanvas.width, compositeCanvas.height);
+                compositeCtx.drawImage(localVideo, 0, 0, compositeCanvas.width, compositeCanvas.height);
+                compositeCtx.drawImage(drawCanvas, 0, 0, compositeCanvas.width, compositeCanvas.height);
+                compositeAnimationId = requestAnimationFrame(drawFrame);
+            };
+
+            if (compositeAnimationId) cancelAnimationFrame(compositeAnimationId);
+            if (!outboundStream) {
+                outboundStream = compositeCanvas.captureStream(30);
+            }
+            drawFrame();
+            return outboundStream;
+        }
+
+        function waitForVideoReady(videoEl) {
+            if (videoEl.readyState >= 2 && videoEl.videoWidth && videoEl.videoHeight) return Promise.resolve();
+            return new Promise((resolve) => {
+                const handleLoaded = () => {
+                    videoEl.removeEventListener('loadedmetadata', handleLoaded);
+                    resolve();
+                };
+                videoEl.addEventListener('loadedmetadata', handleLoaded);
+            });
+        }
 
         function resizeCanvas() {
             const rect = videoShell.getBoundingClientRect();
@@ -528,19 +595,21 @@
         // ... (나머지 WebRTC 관련 코드는 기존과 동일, startStreaming 함수 등) ...
 
         async function startStreaming() {
-            if (localStream) return;
+            if (outboundStream) return;
             try {
                 log('📷 카메라 권한 요청 중...');
                 // 모든 카메라 장치 사용 (OBS 가상 카메라 포함)
-                localStream = await navigator.mediaDevices.getUserMedia({
+                cameraStream = await navigator.mediaDevices.getUserMedia({
                     video: { width: { ideal: 1280 }, height: { ideal: 720 } },
                     audio: false
                 });
-                localVideo.srcObject = localStream;
+                localVideo.srcObject = cameraStream;
+                await waitForVideoReady(localVideo);
                 log('🎥 스트림 획득 성공! WebRTC 연결 시작...');
 
+                const mixedStream = startCompositeStream();
                 createPeerConnection();
-                localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+                mixedStream.getTracks().forEach(track => peerConnection.addTrack(track, mixedStream));
 
                 const offer = await peerConnection.createOffer();
                 await peerConnection.setLocalDescription(offer);
@@ -580,11 +649,11 @@
             ctx.fillText('(Dummy Stream)', canvas.width / 2, canvas.height / 2 + 60);
 
             // canvas를 스트림으로 변환
-            localStream = canvas.captureStream(30); // 30 FPS
-            localVideo.srcObject = localStream;
+            outboundStream = canvas.captureStream(30); // 30 FPS
+            localVideo.srcObject = outboundStream;
 
             createPeerConnection();
-            localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+            outboundStream.getTracks().forEach(track => peerConnection.addTrack(track, outboundStream));
 
             const offer = peerConnection.createOffer();
             offer.then(off => {
