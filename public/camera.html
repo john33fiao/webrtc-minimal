@@ -6,124 +6,62 @@
     <style>
         :root {
             --bg: #0b1021;
-            --panel: #11162b;
+            --frame: #0f172a;
+            --border: #1e293b;
             --accent: #5eead4;
-            --text: #e2e8f0;
-            --muted: #94a3b8;
         }
 
-        * {
-            box-sizing: border-box;
-        }
+        * { box-sizing: border-box; }
 
-        html, body {
+        body {
             margin: 0;
-            padding: 0;
-            height: 100%;
-            font-family: 'Inter', 'Noto Sans KR', system-ui, -apple-system, sans-serif;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
             background: radial-gradient(circle at 20% 20%, rgba(94, 234, 212, 0.08), transparent 35%),
                         radial-gradient(circle at 80% 0%, rgba(94, 234, 212, 0.05), transparent 30%),
                         var(--bg);
-            color: var(--text);
+            color: #e2e8f0;
+            font-family: 'Inter', 'Noto Sans KR', system-ui, -apple-system, sans-serif;
+            padding: 16px;
         }
 
-        body {
-            display: flex;
-            flex-direction: column;
-            height: 100vh;
-        }
-
-        .app {
-            display: flex;
-            flex-direction: column;
-            height: 100vh;
-        }
-
-        header {
-            padding: 16px 20px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 16px;
-            backdrop-filter: blur(8px);
-        }
-
-        .title {
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-        }
-
-        .title h1 {
-            margin: 0;
-            font-size: 20px;
-            letter-spacing: -0.2px;
-        }
-
-        .title .subtitle {
-            margin: 0;
-            color: var(--muted);
-            font-size: 13px;
-        }
-
-        .status-badges {
-            display: flex;
-            gap: 8px;
-        }
-
-        .badge {
-            padding: 6px 10px;
-            border-radius: 999px;
-            font-size: 12px;
-            letter-spacing: 0.1px;
-            background: rgba(94, 234, 212, 0.1);
-            color: var(--accent);
-            border: 1px solid rgba(94, 234, 212, 0.25);
-        }
-
-        .workspace {
-            display: grid;
-            grid-template-columns: minmax(0, 1fr) 320px;
-            gap: 16px;
-            padding: 16px 20px 20px;
-            height: calc(100vh - 80px);
-        }
-
-        .stage {
-            background: linear-gradient(145deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0));
-            border: 1px solid rgba(255, 255, 255, 0.06);
-            border-radius: 16px;
-            padding: 14px;
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-            min-height: 0;
-        }
-
-        .stage-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            color: var(--muted);
-            font-size: 13px;
-        }
-
-        .video-shell {
+        /* 16:9 비율을 유지하며 뷰포트를 채우되 레터/필러박스 처리 */
+        #videoContainer {
             position: relative;
-            flex: 1;
+            width: min(100vw - 32px, calc((100vh - 32px) * 16 / 9));
+            height: min(100vh - 32px, calc((100vw - 32px) * 9 / 16));
+            background: var(--frame);
+            border: 1px solid var(--border);
             border-radius: 12px;
+            box-shadow: 0 25px 60px rgba(0, 0, 0, 0.45);
             overflow: hidden;
-            background: #0d1326;
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            min-height: 320px;
+            cursor: pointer;
         }
 
-        #localVideo {
+        #videoContainer.streaming::after {
+            display: none;
+        }
+
+        #videoContainer::after {
+            content: '영상 화면을 클릭하면 촬영이 시작됩니다';
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: rgba(226, 232, 240, 0.6);
+            font-size: 15px;
+            pointer-events: none;
+            text-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+        }
+
+        video {
             width: 100%;
             height: 100%;
-            object-fit: cover;
-            background: #0d1326;
+            object-fit: contain;
+            background: black;
         }
 
         #drawCanvas {
@@ -132,216 +70,25 @@
             width: 100%;
             height: 100%;
             touch-action: none;
-        }
-
-        .overlay-hint {
-            position: absolute;
-            inset: 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            pointer-events: none;
-            color: rgba(255, 255, 255, 0.35);
-            font-size: 15px;
-            letter-spacing: 0.2px;
-            background: radial-gradient(circle at 50% 50%, rgba(94, 234, 212, 0.04), transparent 35%);
-        }
-
-        .overlay-controls {
-            position: absolute;
-            left: 12px;
-            bottom: 12px;
-            display: flex;
-            gap: 10px;
-            align-items: center;
-            padding: 10px 12px;
-            background: rgba(0, 0, 0, 0.35);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            border-radius: 12px;
-            backdrop-filter: blur(10px);
-        }
-
-        .pill-button {
-            border-radius: 999px;
-            padding: 10px 14px;
-            font-weight: 700;
-            box-shadow: 0 10px 25px rgba(34, 211, 238, 0.25);
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            border: 1px solid rgba(94, 234, 212, 0.5);
-        }
-
-        .pill-button.active {
-            background: linear-gradient(135deg, #22d3ee, #0ea5e9);
-            color: #0b1021;
-            box-shadow: 0 12px 30px rgba(14, 165, 233, 0.35);
-        }
-
-        .palette {
-            display: flex;
-            gap: 8px;
-        }
-
-        .palette button {
-            width: 32px;
-            height: 32px;
-            border-radius: 10px;
-            border: 2px solid transparent;
-            padding: 0;
-            box-shadow: none;
-            transition: transform 0.1s ease, border-color 0.15s ease;
-        }
-
-        .palette button:hover {
-            transform: translateY(-1px);
-        }
-
-        .palette button.active {
-            border-color: #fff;
-            box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.15);
-        }
-
-        .side-panel {
-            background: rgba(255, 255, 255, 0.02);
-            border: 1px solid rgba(255, 255, 255, 0.06);
-            border-radius: 14px;
-            padding: 14px;
-            display: flex;
-            flex-direction: column;
-            gap: 14px;
-            min-height: 0;
-        }
-
-        .controls {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        }
-
-        button {
-            padding: 12px 14px;
-            border: none;
-            border-radius: 10px;
-            background: linear-gradient(135deg, #5eead4, #22d3ee);
-            color: #0b1021;
-            font-weight: 700;
-            cursor: pointer;
-            transition: transform 0.1s ease, box-shadow 0.2s ease;
-            box-shadow: 0 10px 25px rgba(34, 211, 238, 0.25);
-        }
-
-        button:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 12px 30px rgba(34, 211, 238, 0.3);
-        }
-
-        button:active {
-            transform: translateY(0);
-            box-shadow: 0 8px 18px rgba(34, 211, 238, 0.18);
-        }
-
-        .notice {
-            background: rgba(94, 234, 212, 0.08);
-            border: 1px solid rgba(94, 234, 212, 0.2);
-            border-radius: 12px;
-            padding: 12px;
-            color: var(--muted);
-            font-size: 13px;
-            line-height: 1.5;
-        }
-
-        #log {
-            flex: 1;
-            background: #0c1328;
-            border-radius: 10px;
-            padding: 10px;
-            border: 1px solid rgba(255, 255, 255, 0.05);
-            font-size: 12px;
-            line-height: 1.6;
-            overflow-y: auto;
-            white-space: pre-line;
-        }
-
-        .log-title {
-            color: var(--muted);
-            font-size: 13px;
-            margin: 0;
-        }
-
-        @media (max-width: 980px) {
-            .workspace {
-                grid-template-columns: 1fr;
-                grid-template-rows: auto auto;
-                height: auto;
-            }
+            cursor: crosshair;
         }
     </style>
 </head>
 <body>
-    <div class="app">
-        <header>
-            <div class="title">
-                <h1>근무자 송출 화면</h1>
-                <p class="subtitle">판서 중심 레이아웃으로 영상 영역을 최대 확보했습니다.</p>
-            </div>
-            <div class="status-badges">
-                <span class="badge">WebRTC 대기</span>
-                <span class="badge">판서 오버레이 준비</span>
-            </div>
-        </header>
-
-        <main class="workspace">
-            <section class="stage">
-                <div class="stage-header">
-                    <span>송출 미리보기 / 판서 레이어</span>
-                    <span>원본 모드</span>
-                </div>
-                <div class="video-shell">
-                    <video id="localVideo" autoplay playsinline muted></video>
-                    <canvas id="drawCanvas"></canvas>
-                    <div class="overlay-hint">영상 위에 판서 레이어가 자리합니다</div>
-                    <div class="overlay-controls">
-                        <button id="btnToggleDraw" class="pill-button">✏️ 판서 시작</button>
-                        <div class="palette" aria-label="색상 팔레트">
-                            <button class="palette-color" data-color="#5eead4" style="background:#5eead4" aria-label="민트"></button>
-                            <button class="palette-color" data-color="#f97316" style="background:#f97316" aria-label="오렌지"></button>
-                            <button class="palette-color" data-color="#22d3ee" style="background:#22d3ee" aria-label="시안"></button>
-                            <button class="palette-color" data-color="#a855f7" style="background:#a855f7" aria-label="퍼플"></button>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            <aside class="side-panel">
-                <div class="controls">
-                    <button id="btnLocalStart">내 촬영 시작 (수동)</button>
-                    <div class="notice">
-                        • 서버의 촬영 요청을 기다리거나 직접 시작할 수 있습니다.<br>
-                        • 판서 도구가 활성화되면 이 영상 위에 그대로 덧칠됩니다.
-                    </div>
-                </div>
-                <div>
-                    <p class="log-title">상태 로그</p>
-                    <div id="log"></div>
-                </div>
-            </aside>
-        </main>
+    <div id="videoContainer">
+        <video id="localVideo" autoplay playsinline muted></video>
+        <canvas id="drawCanvas"></canvas>
     </div>
 
     <!-- <script src="/socket.io/socket.io.js"></script> -->
     <script src="socket.io.min.js"></script>
     <script>
-        // 명시적으로 서버 주소를 적지 않으면 현재 접속한 주소(192.168.x.x:3000)를 기준으로 연결합니다.
         const socket = io();
         const localVideo = document.getElementById('localVideo');
-        const logDiv = document.getElementById('log');
         const drawCanvas = document.getElementById('drawCanvas');
-        const videoShell = document.querySelector('.video-shell');
-        const overlayHint = document.querySelector('.overlay-hint');
-        const toggleDrawBtn = document.getElementById('btnToggleDraw');
-        const paletteButtons = Array.from(document.querySelectorAll('.palette-color'));
+        const videoContainer = document.getElementById('videoContainer');
         const drawCtx = drawCanvas.getContext('2d');
+
         let peerConnection;
         let cameraStream;
         let outboundStream;
@@ -349,7 +96,6 @@
         let compositeCtx;
         let compositeAnimationId;
         let isDrawing = false;
-        let isAnnotationEnabled = false;
         let currentColor = '#5eead4';
         const remoteStrokeState = new Map();
 
@@ -357,6 +103,10 @@
         const rtcConfig = {
             iceServers: []
         };
+
+        function log(message) {
+            console.log(message);
+        }
 
         function getVideoResolution() {
             const track = cameraStream?.getVideoTracks()[0];
@@ -422,7 +172,7 @@
         }
 
         function resizeCanvas() {
-            const rect = videoShell.getBoundingClientRect();
+            const rect = videoContainer.getBoundingClientRect();
             const dpr = window.devicePixelRatio || 1;
             drawCanvas.width = rect.width * dpr;
             drawCanvas.height = rect.height * dpr;
@@ -464,7 +214,6 @@
         }
 
         function startDrawing(evt) {
-            if (!isAnnotationEnabled) return;
             evt.preventDefault();
             isDrawing = true;
             const pos = getCanvasPos(evt);
@@ -490,29 +239,7 @@
             drawCtx.closePath();
         }
 
-        function setDrawingColor(color) {
-            currentColor = color;
-            drawCtx.strokeStyle = color;
-            paletteButtons.forEach(btn => {
-                btn.classList.toggle('active', btn.dataset.color === color);
-            });
-        }
-
-        function applyAnnotationState(enabled) {
-            isAnnotationEnabled = enabled;
-            drawCanvas.style.pointerEvents = enabled ? 'auto' : 'none';
-            toggleDrawBtn.classList.toggle('active', enabled);
-            toggleDrawBtn.textContent = enabled ? '✏️ 판서 종료' : '✏️ 판서 시작';
-            overlayHint.textContent = enabled ? '판서 모드 활성화됨' : '판서 대기 상태';
-        }
-
-        function toggleAnnotation() {
-            applyAnnotationState(!isAnnotationEnabled);
-        }
-
         resizeCanvas();
-        setDrawingColor(currentColor);
-        applyAnnotationState(false);
         window.addEventListener('resize', resizeCanvas);
 
         drawCanvas.addEventListener('pointerdown', startDrawing);
@@ -520,17 +247,6 @@
         drawCanvas.addEventListener('pointerup', endDrawing);
         drawCanvas.addEventListener('pointerleave', endDrawing);
         drawCanvas.addEventListener('pointercancel', endDrawing);
-
-        toggleDrawBtn.addEventListener('click', toggleAnnotation);
-        paletteButtons.forEach(btn => {
-            btn.addEventListener('click', () => setDrawingColor(btn.dataset.color));
-        });
-
-        // [중요] 디버깅을 위한 로그 함수
-        function log(msg) {
-            const time = new Date().toLocaleTimeString();
-            logDiv.innerHTML = `[${time}] ${msg}<br>` + logDiv.innerHTML;
-        }
 
         // 1. 서버 연결 확인 이벤트
         socket.on('connect', () => {
@@ -598,15 +314,13 @@
             remoteStrokeState.set(strokeKey, { point: canvasPoint, color: strokeColor });
         });
 
-        // ... (나머지 WebRTC 관련 코드는 기존과 동일, startStreaming 함수 등) ...
-
         async function startStreaming() {
             if (outboundStream) return;
+            videoContainer.classList.add('streaming');
             try {
                 log('📷 카메라 권한 요청 중...');
-                // 모든 카메라 장치 사용 (OBS 가상 카메라 포함)
                 cameraStream = await navigator.mediaDevices.getUserMedia({
-                    video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+                    video: { width: { ideal: 1280 }, height: { ideal: 720 }, aspectRatio: 16 / 9 },
                     audio: false
                 });
                 localVideo.srcObject = cameraStream;
@@ -626,7 +340,6 @@
                 console.error(err);
                 log(`❌ 카메라 실패: ${err.name} - ${err.message}`);
 
-                // 카메라 권한 없으면 더미 화면 송출
                 log('💡 더미 화면을 생성하여 송출합니다...');
                 createDummyStream();
             }
@@ -639,11 +352,9 @@
             canvas.height = 720;
             const ctx = canvas.getContext('2d');
 
-            // 배경 색상
             ctx.fillStyle = '#1a1a1a';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-            // 텍스트 그리기
             ctx.fillStyle = '#ff0000';
             ctx.font = 'bold 60px Arial';
             ctx.textAlign = 'center';
@@ -654,24 +365,19 @@
             ctx.font = '30px Arial';
             ctx.fillText('(Dummy Stream)', canvas.width / 2, canvas.height / 2 + 60);
 
-            // canvas를 스트림으로 변환
-            outboundStream = canvas.captureStream(30); // 30 FPS
+            outboundStream = canvas.captureStream(30);
             localVideo.srcObject = outboundStream;
 
             createPeerConnection();
             outboundStream.getTracks().forEach(track => peerConnection.addTrack(track, outboundStream));
 
-            const offer = peerConnection.createOffer();
-            offer.then(off => {
+            peerConnection.createOffer().then(off => {
                 peerConnection.setLocalDescription(off);
                 socket.emit('offer', off);
                 log('📡 Offer 전송 완료 (Dummy Stream)');
             });
         }
 
-        // ... (createPeerConnection 등 머지 함수 그대로) ...
-
-        // (누락 방지를 위해 필수 함수 다시 기재)
         function createPeerConnection() {
             peerConnection = new RTCPeerConnection(rtcConfig);
             peerConnection.onicecandidate = (event) => {
@@ -681,8 +387,8 @@
         socket.on('answer', (ans) => peerConnection.setRemoteDescription(ans));
         socket.on('ice-candidate', (can) => peerConnection && peerConnection.addIceCandidate(can));
 
-        // 수동 시작 버튼 클릭
-        document.getElementById('btnLocalStart').addEventListener('click', () => {
+        // 영상 영역 클릭 시 촬영 시작
+        videoContainer.addEventListener('click', () => {
             startStreaming();
         });
     </script>
