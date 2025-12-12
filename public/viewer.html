@@ -4,18 +4,44 @@
     <meta charset="UTF-8">
     <title>Server (Viewer)</title>
     <style>
-        body { display: flex; flex-direction: column; align-items: center; background: #222; color: white; }
-        /* 16:9 비율 유지를 위한 컨테이너 */
+        :root {
+            --bg: #0b1021;
+            --frame: #0f172a;
+            --border: #1e293b;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--bg);
+            color: white;
+        }
+
+        /* 16:9 비율을 유지하며 뷰포트 크기에 맞춰 레터/필러박스 처리 */
         #video-container {
             position: relative;
-            width: 80%;
-            max-width: 960px;
-            aspect-ratio: 16 / 9;
-            background: black;
-            border: 2px solid #555;
+            width: min(100vw, calc(100vh * 16 / 9));
+            height: min(100vh, calc(100vw * 9 / 16));
+            background: var(--frame);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            box-shadow: 0 25px 60px rgba(0, 0, 0, 0.45);
             cursor: crosshair;
+            overflow: hidden;
         }
-        video { width: 100%; height: 100%; object-fit: contain; }
+
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            background: black;
+        }
+
         #annotationCanvas {
             position: absolute;
             inset: 0;
@@ -26,39 +52,10 @@
             touch-action: none;
             z-index: 1;
         }
-        button { padding: 10px 20px; font-size: 16px; margin: 20px; cursor: pointer; }
-        #statusBadge {
-            margin-top: 8px;
-            padding: 8px 12px;
-            background: #333b58;
-            border: 1px solid #4a74ff;
-            border-radius: 6px;
-            font-size: 14px;
-            color: #d8e1ff;
-        }
-        #overlayMessage {
-            position: absolute;
-            inset: 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: #d8e1ff;
-            background: rgba(0, 0, 0, 0.35);
-            font-size: 18px;
-            letter-spacing: 0.5px;
-            text-align: center;
-            pointer-events: none;
-            z-index: 2;
-        }
     </style>
 </head>
 <body>
-    <h2>Server (Video Receiver)</h2>
-    <div id="statusBadge">상태: 판서 대기 상태</div>
-    <button id="btnRequestStart">촬영 시작 요청</button>
-
     <div id="video-container">
-        <div id="overlayMessage">판서 대기 상태입니다.</div>
         <video id="remoteVideo" autoplay playsinline></video>
         <canvas id="annotationCanvas"></canvas>
     </div>
@@ -69,8 +66,6 @@
         const socket = io();
         const remoteVideo = document.getElementById('remoteVideo');
         const videoContainer = document.getElementById('video-container');
-        const statusBadge = document.getElementById('statusBadge');
-        const overlayMessage = document.getElementById('overlayMessage');
         let peerConnection;
         let isDrawing = false;
         let lastPoint = null;
@@ -79,11 +74,6 @@
 
         const overlayCanvas = document.getElementById('annotationCanvas');
         const overlayCtx = overlayCanvas.getContext('2d');
-
-        // 기본 상태: 판서 대기
-        const state = {
-            annotation: 'waiting', // waiting | active
-        };
 
         function resizeCanvas() {
             const rect = videoContainer.getBoundingClientRect();
@@ -140,42 +130,31 @@
             console.log('[annotation] sent', payload);
         }
 
-        function updateAnnotationState(nextState) {
-            state.annotation = nextState;
-            if (nextState === 'waiting') {
-                statusBadge.textContent = '상태: 판서 대기 상태';
-                overlayMessage.textContent = '판서 대기 상태입니다.';
-                overlayMessage.style.display = 'flex';
-            } else {
-                statusBadge.textContent = '상태: 판서 진행 중';
-                overlayMessage.style.display = 'none';
-            }
-        }
-
-        updateAnnotationState('waiting');
         resizeCanvas();
         window.addEventListener('resize', resizeCanvas);
+
+        function requestStartCamera() {
+            console.log('Requesting camera start...');
+            socket.emit('request_start_camera');
+        }
 
         // WebRTC 설정: 로컬망 환경만 사용하므로 외부 STUN 서버 없이 구성
         const rtcConfig = {
             iceServers: []
         };
 
-        // 1. 촬영 시작 요청 버튼
-        document.getElementById('btnRequestStart').addEventListener('click', () => {
-            console.log("Requesting camera start...");
-            socket.emit('request_start_camera');
-        });
+        // 1. 영상 영역 클릭 시 촬영 시작 요청
+        videoContainer.addEventListener('click', requestStartCamera, { capture: true });
 
         // 2. 마우스 입력 (드래그/클릭) 좌표 전송 및 로컬 렌더링
         // 영상 내부에서의 상대 좌표(0.0 ~ 1.0)로 변환하여 전송해야 해상도가 달라도 정확함
         overlayCanvas.addEventListener('mousedown', (e) => {
+            requestStartCamera();
             const normalized = getNormalizedCoords(e);
             const canvasPoint = denormalizeCoords(normalized);
             isDrawing = true;
             lastPoint = canvasPoint;
             drawPoint(canvasPoint);
-            updateAnnotationState('active');
             sendAnnotationPoint(normalized, true);
         });
 
