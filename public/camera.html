@@ -280,8 +280,9 @@
         let localStream;
         let isDrawing = false;
 
+        // 로컬망 환경 전용: 외부 STUN 서버 없이 ICE 후보를 교환
         const rtcConfig = {
-            iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+            iceServers: []
         };
 
         function resizeCanvas() {
