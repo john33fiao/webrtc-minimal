@@ -35,11 +35,15 @@
             overflow: hidden;
         }
 
-        video {
+        video, #renderCanvas {
             width: 100%;
             height: 100%;
             object-fit: contain;
             background: black;
+        }
+
+        #renderCanvas {
+            display: block;
         }
 
         #annotationCanvas {
@@ -56,7 +60,8 @@
 </head>
 <body>
     <div id="video-container">
-        <video id="remoteVideo" autoplay playsinline></video>
+        <canvas id="renderCanvas"></canvas>
+        <video id="remoteVideo" autoplay playsinline hidden></video>
         <canvas id="annotationCanvas"></canvas>
     </div>
 
@@ -65,24 +70,44 @@
     <script>
         const socket = io();
         const remoteVideo = document.getElementById('remoteVideo');
+        const renderCanvas = document.getElementById('renderCanvas');
         const videoContainer = document.getElementById('video-container');
         let peerConnection;
         let isDrawing = false;
         let lastPoint = null;
         const remoteStrokeState = new Map();
         const viewerStrokeColor = '#0000FF';
+        const TARGET_WIDTH = 1920;
+        const TARGET_HEIGHT = 1080;
 
         const overlayCanvas = document.getElementById('annotationCanvas');
         const overlayCtx = overlayCanvas.getContext('2d');
 
+        function resizeRenderCanvas() {
+            const rect = videoContainer.getBoundingClientRect();
+            const dpr = window.devicePixelRatio || 1;
+            renderCanvas.width = TARGET_WIDTH * dpr;
+            renderCanvas.height = TARGET_HEIGHT * dpr;
+            renderCanvas.style.width = `${rect.width}px`;
+            renderCanvas.style.height = `${rect.height}px`;
+            const ctx = renderCanvas.getContext('2d');
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            ctx.scale(dpr, dpr);
+        }
+
         function resizeCanvas() {
             const rect = videoContainer.getBoundingClientRect();
-            overlayCanvas.width = rect.width;
-            overlayCanvas.height = rect.height;
+            const dpr = window.devicePixelRatio || 1;
+            overlayCanvas.width = rect.width * dpr;
+            overlayCanvas.height = rect.height * dpr;
+            overlayCanvas.style.width = `${rect.width}px`;
+            overlayCanvas.style.height = `${rect.height}px`;
             overlayCtx.strokeStyle = viewerStrokeColor;
             overlayCtx.lineWidth = 3;
             overlayCtx.lineCap = 'round';
             overlayCtx.lineJoin = 'round';
+            overlayCtx.setTransform(1, 0, 0, 1, 0, 0);
+            overlayCtx.scale(dpr, dpr);
         }
 
         function getNormalizedCoords(event) {
@@ -130,8 +155,35 @@
             console.log('[annotation] sent', payload);
         }
 
+        resizeRenderCanvas();
         resizeCanvas();
-        window.addEventListener('resize', resizeCanvas);
+        window.addEventListener('resize', () => {
+            resizeRenderCanvas();
+            resizeCanvas();
+        });
+
+        function renderRemoteVideo() {
+            const ctx = renderCanvas.getContext('2d');
+            const width = remoteVideo.videoWidth || TARGET_WIDTH;
+            const height = remoteVideo.videoHeight || TARGET_HEIGHT;
+            if (!width || !height) {
+                requestAnimationFrame(renderRemoteVideo);
+                return;
+            }
+
+            const scale = Math.min(TARGET_WIDTH / width, TARGET_HEIGHT / height);
+            const drawWidth = width * scale;
+            const drawHeight = height * scale;
+            const offsetX = (TARGET_WIDTH - drawWidth) / 2;
+            const offsetY = (TARGET_HEIGHT - drawHeight) / 2;
+
+            ctx.clearRect(0, 0, TARGET_WIDTH, TARGET_HEIGHT);
+            ctx.fillStyle = 'black';
+            ctx.fillRect(0, 0, TARGET_WIDTH, TARGET_HEIGHT);
+            ctx.drawImage(remoteVideo, offsetX, offsetY, drawWidth, drawHeight);
+
+            requestAnimationFrame(renderRemoteVideo);
+        }
 
         function requestStartCamera() {
             console.log('Requesting camera start...');
@@ -221,6 +273,10 @@
             // 상대방의 영상 트랙 수신 시 비디오 태그에 연결
             peerConnection.ontrack = (event) => {
                 remoteVideo.srcObject = event.streams[0];
+                remoteVideo.onloadedmetadata = () => {
+                    resizeRenderCanvas();
+                    renderRemoteVideo();
+                };
             };
 
             peerConnection.onicecandidate = (event) => {
