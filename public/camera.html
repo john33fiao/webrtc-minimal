@@ -127,6 +127,14 @@
             background: #0d1326;
         }
 
+        #drawCanvas {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            touch-action: none;
+        }
+
         .overlay-hint {
             position: absolute;
             inset: 0;
@@ -237,6 +245,7 @@
                 </div>
                 <div class="video-shell">
                     <video id="localVideo" autoplay playsinline muted></video>
+                    <canvas id="drawCanvas"></canvas>
                     <div class="overlay-hint">영상 위에 판서 레이어가 자리합니다</div>
                 </div>
             </section>
@@ -264,12 +273,71 @@
         const socket = io();
         const localVideo = document.getElementById('localVideo');
         const logDiv = document.getElementById('log');
+        const drawCanvas = document.getElementById('drawCanvas');
+        const videoShell = document.querySelector('.video-shell');
+        const drawCtx = drawCanvas.getContext('2d');
         let peerConnection;
         let localStream;
+        let isDrawing = false;
 
         const rtcConfig = {
             iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
         };
+
+        function resizeCanvas() {
+            const rect = videoShell.getBoundingClientRect();
+            const dpr = window.devicePixelRatio || 1;
+            drawCanvas.width = rect.width * dpr;
+            drawCanvas.height = rect.height * dpr;
+            drawCanvas.style.width = `${rect.width}px`;
+            drawCanvas.style.height = `${rect.height}px`;
+
+            drawCtx.setTransform(1, 0, 0, 1, 0, 0);
+            drawCtx.scale(dpr, dpr);
+            drawCtx.lineCap = 'round';
+            drawCtx.lineJoin = 'round';
+            drawCtx.strokeStyle = '#5eead4';
+            drawCtx.lineWidth = 3;
+        }
+
+        function getCanvasPos(evt) {
+            const rect = drawCanvas.getBoundingClientRect();
+            return {
+                x: evt.clientX - rect.left,
+                y: evt.clientY - rect.top
+            };
+        }
+
+        function startDrawing(evt) {
+            evt.preventDefault();
+            isDrawing = true;
+            const pos = getCanvasPos(evt);
+            drawCtx.beginPath();
+            drawCtx.moveTo(pos.x, pos.y);
+        }
+
+        function draw(evt) {
+            if (!isDrawing) return;
+            evt.preventDefault();
+            const pos = getCanvasPos(evt);
+            drawCtx.lineTo(pos.x, pos.y);
+            drawCtx.stroke();
+        }
+
+        function endDrawing() {
+            if (!isDrawing) return;
+            isDrawing = false;
+            drawCtx.closePath();
+        }
+
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        drawCanvas.addEventListener('pointerdown', startDrawing);
+        drawCanvas.addEventListener('pointermove', draw);
+        drawCanvas.addEventListener('pointerup', endDrawing);
+        drawCanvas.addEventListener('pointerleave', endDrawing);
+        drawCanvas.addEventListener('pointercancel', endDrawing);
 
         // [중요] 디버깅을 위한 로그 함수
         function log(msg) {
