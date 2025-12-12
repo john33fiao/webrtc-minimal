@@ -21,8 +21,8 @@
 1.  **저장소 복제:**
 
     ```bash
-    git clone https://github.com/YourUsername/YourRepository.git
-    cd YourRepository
+    git clone https://github.com/john33fiao/webrtc-minimal.git
+    cd webrtc-minimal
     ```
 
 2.  **Python 가상 환경 생성 및 활성화 (권장):**
