@@ -100,7 +100,11 @@
         let compositeAnimationId;
         let isDrawing = false;
         let currentColor = '#5eead4';
-        const remoteStrokeState = new Map();
+        let lastCanvasPoint = null;
+        let lastNormalizedPoint = null;
+        const STROKE_LIFETIME_MS = 10_000;
+        const strokes = [];
+        const activeStrokes = new Map();
 
         // 로컬망 환경 전용: 외부 STUN 서버 없이 ICE 후보를 교환
         const rtcConfig = {
@@ -189,6 +193,7 @@
             drawCtx.lineJoin = 'round';
             drawCtx.strokeStyle = currentColor;
             drawCtx.lineWidth = 3;
+            renderAllStrokes();
         }
 
         function getCanvasPos(evt) {
@@ -217,13 +222,86 @@
             };
         }
 
+        function drawPoint(point, ctx) {
+            ctx.beginPath();
+            ctx.arc(point.x, point.y, 2, 0, Math.PI * 2);
+            ctx.fillStyle = ctx.strokeStyle;
+            ctx.fill();
+        }
+
+        function renderAllStrokes() {
+            drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+            strokes.forEach((stroke) => {
+                if (!stroke.points.length) return;
+                drawCtx.save();
+                drawCtx.globalAlpha = stroke.isRemote ? 0.85 : 1;
+                drawCtx.strokeStyle = stroke.color;
+                drawCtx.fillStyle = stroke.color;
+                drawCtx.lineWidth = 3;
+                drawCtx.lineCap = 'round';
+                drawCtx.lineJoin = 'round';
+
+                if (stroke.points.length === 1) {
+                    drawPoint(stroke.points[0], drawCtx);
+                } else {
+                    drawCtx.beginPath();
+                    drawCtx.moveTo(stroke.points[0].x, stroke.points[0].y);
+                    for (let i = 1; i < stroke.points.length; i++) {
+                        drawCtx.lineTo(stroke.points[i].x, stroke.points[i].y);
+                    }
+                    drawCtx.stroke();
+                }
+                drawCtx.restore();
+            });
+        }
+
+        function scheduleStrokeExpiry(stroke) {
+            if (stroke.expireTimer) clearTimeout(stroke.expireTimer);
+            stroke.expireTimer = setTimeout(() => {
+                const idx = strokes.indexOf(stroke);
+                if (idx !== -1) {
+                    strokes.splice(idx, 1);
+                    renderAllStrokes();
+                }
+            }, STROKE_LIFETIME_MS);
+        }
+
+        function finalizeStroke(strokeKey) {
+            const stroke = activeStrokes.get(strokeKey);
+            if (!stroke) return;
+            activeStrokes.delete(strokeKey);
+            scheduleStrokeExpiry(stroke);
+        }
+
+        function upsertStroke(strokeKey, strokeColor, canvasPoint, { isStart = false, isEnd = false, isRemote = false } = {}) {
+            if (isStart) {
+                finalizeStroke(strokeKey);
+            }
+
+            let stroke = activeStrokes.get(strokeKey);
+            if (!stroke || isStart) {
+                stroke = { key: strokeKey, color: strokeColor, points: [], expireTimer: null, isRemote };
+                strokes.push(stroke);
+                activeStrokes.set(strokeKey, stroke);
+            }
+
+            stroke.points.push(canvasPoint);
+
+            if (isEnd) {
+                finalizeStroke(strokeKey);
+            }
+
+            renderAllStrokes();
+        }
+
         function startDrawing(evt) {
             evt.preventDefault();
             isDrawing = true;
             const pos = getCanvasPos(evt);
             const normalized = getNormalizedPos(evt);
-            drawCtx.beginPath();
-            drawCtx.moveTo(pos.x, pos.y);
+            lastCanvasPoint = pos;
+            lastNormalizedPoint = normalized;
+            upsertStroke('camera', currentColor, pos, { isStart: true });
             sendAnnotationPoint(normalized.x, normalized.y, true);
         }
 
@@ -231,16 +309,24 @@
             if (!isDrawing) return;
             evt.preventDefault();
             const pos = getCanvasPos(evt);
-            drawCtx.lineTo(pos.x, pos.y);
-            drawCtx.stroke();
             const normalized = getNormalizedPos(evt);
+            upsertStroke('camera', currentColor, pos);
+            lastCanvasPoint = pos;
+            lastNormalizedPoint = normalized;
             sendAnnotationPoint(normalized.x, normalized.y);
         }
 
-        function endDrawing() {
+        function endDrawing(evt) {
             if (!isDrawing) return;
             isDrawing = false;
-            drawCtx.closePath();
+            const pos = evt ? getCanvasPos(evt) : lastCanvasPoint;
+            const normalized = evt ? getNormalizedPos(evt) : lastNormalizedPoint;
+            if (pos && normalized) {
+                upsertStroke('camera', currentColor, pos, { isEnd: true });
+                sendAnnotationPoint(normalized.x, normalized.y, false, true);
+            }
+            lastCanvasPoint = null;
+            lastNormalizedPoint = null;
         }
 
         resizeCanvas();
@@ -273,7 +359,7 @@
         });
 
         // 판서 좌표 송수신: RTCDataChannel 없이 Socket.IO 채널을 재사용
-        function sendAnnotationPoint(x, y, isStart = false) {
+        function sendAnnotationPoint(x, y, isStart = false, isEnd = false) {
             const payload = {
                 x: x,
                 y: y,
@@ -281,6 +367,7 @@
                 createdAt: Date.now(),
                 kind: 'annotation-point',
                 isStart,
+                isEnd,
                 color: currentColor,
             };
             socket.emit('annotation:point', payload);
@@ -291,31 +378,13 @@
             log(`🖌️ 판서 좌표 수신: ${payload.x}, ${payload.y} (from ${payload.source})`);
             const canvasPoint = denormalizePos(payload);
             const strokeKey = payload.source || 'peer';
-            if (payload.isStart) {
-                remoteStrokeState.delete(strokeKey);
-            }
-            const previousPoint = remoteStrokeState.get(strokeKey);
-
             const strokeColor = payload.color || '#0000FF';
 
-            drawCtx.save();
-            drawCtx.globalAlpha = 0.85;
-            drawCtx.strokeStyle = strokeColor;
-            drawCtx.fillStyle = strokeColor;
-
-            if (previousPoint && !payload.isStart) {
-                drawCtx.beginPath();
-                drawCtx.moveTo(previousPoint.point.x, previousPoint.point.y);
-                drawCtx.lineTo(canvasPoint.x, canvasPoint.y);
-                drawCtx.stroke();
-            } else {
-                drawCtx.beginPath();
-                drawCtx.arc(canvasPoint.x, canvasPoint.y, 2, 0, Math.PI * 2);
-                drawCtx.fill();
-            }
-
-            drawCtx.restore();
-            remoteStrokeState.set(strokeKey, { point: canvasPoint, color: strokeColor });
+            upsertStroke(strokeKey, strokeColor, canvasPoint, {
+                isStart: payload.isStart,
+                isEnd: payload.isEnd,
+                isRemote: true,
+            });
         });
 
         async function startStreaming() {
