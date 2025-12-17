@@ -9,7 +9,6 @@ cd /d "%~dp0"
 
 if not exist "webrtc-server.tar" (
     echo [오류] webrtc-server.tar 파일이 없습니다.
-    echo        먼저 save-image.bat을 실행하거나 tar 파일을 복사해주세요.
     pause
     exit /b 1
 )

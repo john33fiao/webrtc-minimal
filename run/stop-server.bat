@@ -5,7 +5,7 @@ echo   WebRTC Minimal Server 종료
 echo ========================================
 echo.
 
-cd /d "%~dp0.."
+cd /d "%~dp0"
 
 docker-compose down
 

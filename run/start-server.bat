@@ -5,15 +5,31 @@ echo   WebRTC Minimal Server 시작
 echo ========================================
 echo.
 
-cd /d "%~dp0.."
+cd /d "%~dp0"
 
-echo [1/3] 기존 컨테이너 정리 중...
+:: 이미지가 없으면 tar 파일에서 로드
+docker images webrtc-server:latest --format "{{.Repository}}" | findstr /r "." >nul
+if errorlevel 1 (
+    if exist "webrtc-server.tar" (
+        echo [1/4] Docker 이미지 로드 중...
+        docker load -i webrtc-server.tar
+    ) else (
+        echo [오류] webrtc-server.tar 파일이 없습니다.
+        echo        이미지 파일을 run 폴더에 넣어주세요.
+        pause
+        exit /b 1
+    )
+) else (
+    echo [1/4] Docker 이미지 확인 완료
+)
+
+echo [2/4] 기존 컨테이너 정리 중...
 docker-compose down 2>nul
 
-echo [2/3] 이미지 빌드 및 컨테이너 시작...
-docker-compose up -d --build
+echo [3/4] 컨테이너 시작...
+docker-compose up -d
 
-echo [3/3] 컨테이너 상태 확인...
+echo [4/4] 컨테이너 상태 확인...
 docker ps --filter "name=webrtc-minimal"
 
 echo.
