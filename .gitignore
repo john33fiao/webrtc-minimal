@@ -1,4 +1,6 @@
 cert.pem
 key.pem
+rootCA.pem
+rootCA-key.pem
 /venv/
 run/webrtc-server.tar

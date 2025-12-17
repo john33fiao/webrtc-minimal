@@ -74,7 +74,8 @@
     python gen_cert.py
     ```
 
-    * 루트 디렉터리에 `cert.pem`/`key.pem`(서버 인증서)과 `rootCA.pem`(루트 CA) 파일이 생성됩니다.
+    * 루트 디렉터리에 `cert.pem`/`key.pem`(서버 인증서), `rootCA.pem`(루트 CA 인증서), `rootCA-key.pem`(루트 CA 키)이 생성됩니다.
+    * 스크립트는 mkcert 스타일로 동작하여, 한 번 생성된 루트 CA를 재사용한 채 로컬 IP(예: 192.168.x.x)와 `localhost` SAN이 포함된 서버 인증서를 발급합니다.
     * **Unreal WebBrowser 위젯 등에서 `Certificate error (-202)`가 발생하면 `rootCA.pem`을 OS/디바이스의 신뢰할 수 있는 루트 인증서 저장소에 추가**해주세요. 그러면 `https://<내부 IP>:3000/public/viewer.html`처럼 사설 IP로 접속할 때도 인증서 오류 없이 페이지가 열립니다.
 
 5.  **서버 실행:**
