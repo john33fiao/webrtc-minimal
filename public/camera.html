@@ -375,7 +375,7 @@
                 if (track.kind === 'video') {
                     const params = sender.getParameters();
                     params.encodings = params.encodings || [{}];
-                    params.encodings[0].maxBitrate = 8_000_000; // 영상 스트림만 송출하므로 넉넉히 확보
+                    params.encodings[0].maxBitrate = 30_000_000; // 영상 스트림만 송출하므로 넉넉히 확보
                     params.encodings[0].maxFramerate = 30;
                     sender.setParameters(params);
                 }
