@@ -318,7 +318,8 @@
         // 2. 촬영 시작 명령 수신
         socket.on('cmd_start_camera', () => {
             log('📩 서버로부터 촬영 요청 수신!');
-            startStreaming();
+            // 이미 스트림을 보유한 상태라도 신규 뷰어의 요청에 맞춰 Offer를 재전송한다.
+            startStreaming({ forceOffer: true });
         });
 
         // 판서 좌표 송수신: RTCDataChannel 없이 Socket.IO 채널을 재사용
@@ -387,9 +388,17 @@
             log('📡 Offer 전송 완료');
         }
 
-        async function startStreaming() {
-            if (isStreaming || isStarting) {
-                log('⏯️ 이미 스트리밍 중이거나 시작 대기 상태입니다. 중복 요청을 무시합니다.');
+        async function startStreaming({ forceOffer = false } = {}) {
+            if (isStarting) {
+                log('⏳ 스트리밍 시작/재협상 중입니다. 잠시만 기다려주세요.');
+                return;
+            }
+
+            const connectionState = peerConnection?.iceConnectionState || peerConnection?.connectionState;
+            const hasActiveConnection = ['checking', 'connected', 'completed'].includes(connectionState);
+
+            if (isStreaming && hasActiveConnection && !forceOffer) {
+                log('⏯️ 이미 스트리밍 중입니다. 추가 요청을 무시합니다.');
                 return;
             }
 
@@ -410,7 +419,7 @@
                 // 판서 오버레이는 각 측에서 별도 캔버스로 렌더링하며, 영상 스트림에 합성하지 않습니다.
                 await negotiateWithStream(cameraStream);
                 isStreaming = true;
-                log('✅ 스트리밍을 시작했습니다.');
+                log(forceOffer ? '🔄 새 Offer를 전송했습니다.' : '✅ 스트리밍을 시작했습니다.');
 
             } catch (err) {
                 console.error(err);
