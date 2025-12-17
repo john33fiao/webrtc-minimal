@@ -88,6 +88,80 @@
     ⚠️  브라우저 접속 시 '고급 -> 안전하지 않음으로 이동'을 눌러주세요.
     ```
 
+## Docker로 실행하기
+
+Docker를 사용하면 Python 환경 설정 없이 바로 서버를 실행할 수 있습니다.
+
+### 사전 요구사항
+
+*   Docker Desktop 설치 ([다운로드](https://www.docker.com/products/docker-desktop/))
+*   Docker Compose (Docker Desktop에 포함)
+
+### Docker Compose로 실행
+
+1.  **컨테이너 빌드 및 실행:**
+
+    ```bash
+    docker-compose up -d --build
+    ```
+
+2.  **서버 상태 확인:**
+
+    ```bash
+    docker ps
+    ```
+
+3.  **로그 확인:**
+
+    ```bash
+    docker logs -f webrtc-minimal
+    ```
+
+4.  **서버 종료:**
+
+    ```bash
+    docker-compose down
+    ```
+
+### 외부 네트워크 접속 설정 (Windows)
+
+Docker 컨테이너가 실행 중이더라도 외부 기기(스마트폰 등)에서 접속하려면 **Windows 방화벽**에서 포트를 열어야 합니다.
+
+**PowerShell (관리자 권한)에서 실행:**
+
+```powershell
+netsh advfirewall firewall add rule name="WebRTC Server Port 3000" dir=in action=allow protocol=tcp localport=3000
+```
+
+**또는 GUI로 설정:**
+
+1.  `Win + R` → `wf.msc` 입력하여 방화벽 설정 열기
+2.  **인바운드 규칙** → **새 규칙** 클릭
+3.  **포트** 선택 → **TCP**, **특정 로컬 포트**: `3000` 입력
+4.  **연결 허용** 선택 → 규칙 이름 입력 후 완료
+
+### 배치 파일로 간편 실행 (Windows)
+
+`run/` 폴더에 준비된 배치 파일을 사용하면 편리합니다:
+
+| 파일 | 용도 |
+|------|------|
+| `start-server.bat` | 서버 빌드 및 시작 |
+| `stop-server.bat` | 서버 종료 |
+| `view-logs.bat` | 실시간 로그 확인 |
+| `save-image.bat` | Docker 이미지를 tar 파일로 저장 |
+| `load-image.bat` | tar 파일에서 이미지 로드 |
+| `open-firewall.bat` | 방화벽 포트 열기 (관리자 권한 필요) |
+
+**최초 설정:**
+1. `open-firewall.bat` 우클릭 → **관리자 권한으로 실행**
+2. `start-server.bat` 더블클릭
+
+**다른 PC에 배포:**
+1. 원본 PC에서 `save-image.bat` 실행 → `webrtc-server.tar` 생성
+2. tar 파일과 `run/` 폴더, `docker-compose.yml`을 대상 PC에 복사
+3. 대상 PC에서 `load-image.bat` → `start-server.bat` 실행
+
 ## 사용법
 
 1.  **뷰어(Viewer) 접속:**
