@@ -6,50 +6,33 @@ import socket
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
-from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
+from cryptography.hazmat.primitives import serialization
+import datetime
+import ipaddress
+import socket
 
-def _collect_ip_addresses():
-    """로컬 IP 주소 목록(IPv4/IPv6)을 수집합니다."""
-
-    ips = {ipaddress.ip_address("127.0.0.1")}
+def get_local_ip():
+    """로컬 PC의 IP 주소를 자동으로 가져옵니다."""
     try:
-        for family, _, _, _, sockaddr in socket.getaddrinfo(socket.gethostname(), None):
-            # sockaddr는 (ip, port, flowinfo, scope_id) 등 다양한 형식으로 반환될 수 있음
-            raw_ip = sockaddr[0]
-            try:
-                ip_obj = ipaddress.ip_address(raw_ip)
-            except ValueError:
-                continue
+        # 외부 연결을 시도하여 로컬 IP를 알아냄 (실제 연결은 하지 않음)
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        local_ip = s.getsockname()[0]
+        s.close()
+        return local_ip
+    except Exception:
+        # 네트워크 연결이 없는 경우 기본값 반환
+        return "127.0.0.1"
 
-            if family in (socket.AF_INET, socket.AF_INET6):
-                ips.add(ip_obj)
-    except socket.gaierror:
-        # 네트워크 설정 문제로 IP를 찾지 못하더라도 loopback만 포함해 진행
-        pass
+def generate_self_signed_cert():
+    # 로컬 IP 주소 자동 감지
+    local_ip = get_local_ip()
+    print(f"🔍 감지된 로컬 IP: {local_ip}")
 
-    return sorted(ips, key=lambda ip: (ip.version, ip.compressed))
-
-
-def generate_certificates():
-    # 1. 루트 CA 키/인증서 생성 (신뢰 가능하도록 개별 파일로 제공)
-    ca_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-    ca_subject = x509.Name([
-        x509.NameAttribute(NameOID.COUNTRY_NAME, u"KR"),
-        x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, u"Seoul"),
-        x509.NameAttribute(NameOID.ORGANIZATION_NAME, u"WebRTC Local CA"),
-        x509.NameAttribute(NameOID.COMMON_NAME, u"WebRTC Local Root"),
-    ])
-
-    ca_cert = (
-        x509.CertificateBuilder()
-        .subject_name(ca_subject)
-        .issuer_name(ca_subject)
-        .public_key(ca_key.public_key())
-        .serial_number(x509.random_serial_number())
-        .not_valid_before(datetime.datetime.utcnow())
-        .not_valid_after(datetime.datetime.utcnow() + datetime.timedelta(days=365))
-        .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
-        .sign(ca_key, hashes.SHA256())
+    # 1. 키 생성
+    key = rsa.generate_private_key(
+        public_exponent=65537,
+        key_size=2048,
     )
 
     # 2. 서버 인증서 키/인증서 생성 (루트 CA로 서명)
@@ -58,34 +41,32 @@ def generate_certificates():
         x509.NameAttribute(NameOID.COUNTRY_NAME, u"KR"),
         x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, u"Seoul"),
         x509.NameAttribute(NameOID.ORGANIZATION_NAME, u"My Local Network"),
-        x509.NameAttribute(NameOID.COMMON_NAME, u"localhost"),
+        x509.NameAttribute(NameOID.COMMON_NAME, local_ip),
     ])
 
-    alt_names = [x509.DNSName(u"localhost")]
-    for ip in _collect_ip_addresses():
-        alt_names.append(x509.IPAddress(ip))
+    # 3. 인증서 생성 (유효기간 365일)
+    cert = x509.CertificateBuilder().subject_name(
+        subject
+    ).issuer_name(
+        issuer
+    ).public_key(
+        key.public_key()
+    ).serial_number(
+        x509.random_serial_number()
+    ).not_valid_before(
+        datetime.datetime.utcnow()
+    ).not_valid_after(
+        datetime.datetime.utcnow() + datetime.timedelta(days=365)
+    ).add_extension(
+        x509.SubjectAlternativeName([
+            x509.DNSName(u"localhost"),
+            x509.IPAddress(ipaddress.IPv4Address(local_ip)),
+            x509.IPAddress(ipaddress.IPv6Address(u"::1")),
+        ]),
+        critical=False,
+    ).sign(key, hashes.SHA256())
 
-    server_cert = (
-        x509.CertificateBuilder()
-        .subject_name(server_subject)
-        .issuer_name(ca_cert.subject)
-        .public_key(server_key.public_key())
-        .serial_number(x509.random_serial_number())
-        .not_valid_before(datetime.datetime.utcnow())
-        .not_valid_after(datetime.datetime.utcnow() + datetime.timedelta(days=365))
-        .add_extension(x509.SubjectAlternativeName(alt_names), critical=False)
-        .add_extension(
-            x509.ExtendedKeyUsage([ExtendedKeyUsageOID.SERVER_AUTH]),
-            critical=False,
-        )
-        .add_extension(
-            x509.BasicConstraints(ca=False, path_length=None),
-            critical=True,
-        )
-        .sign(ca_key, hashes.SHA256())
-    )
-
-    # 3. 파일로 저장
+    # 4. 파일로 저장
     with open("key.pem", "wb") as f:
         f.write(
             server_key.private_bytes(
