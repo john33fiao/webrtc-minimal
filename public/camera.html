@@ -453,8 +453,20 @@
         socket.on('answer', (ans) => peerConnection && peerConnection.setRemoteDescription(ans));
         socket.on('ice-candidate', (can) => peerConnection && peerConnection.addIceCandidate(can));
 
-        // 영상 영역 클릭 시 촬영 시작
+        // 전체화면 요청 (주소 표시줄 숨김)
+        function requestFullscreen() {
+            const el = document.documentElement;
+            const rfs = el.requestFullscreen || el.webkitRequestFullscreen || el.mozRequestFullScreen || el.msRequestFullscreen;
+            if (rfs && !document.fullscreenElement && !document.webkitFullscreenElement) {
+                rfs.call(el).catch((err) => {
+                    log(`⚠️ 전체화면 전환 실패: ${err.message}`);
+                });
+            }
+        }
+
+        // 영상 영역 클릭 시 전체화면 + 촬영 시작
         videoContainer.addEventListener('click', () => {
+            requestFullscreen();
             startStreaming();
         });
     </script>
