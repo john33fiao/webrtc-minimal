@@ -1,7 +1,13 @@
 # server.py
+import os
 from aiohttp import web
 import socketio
 import ssl  # [추가] SSL 모듈 임포트
+
+# 환경변수에서 설정 로드 (기본값 제공)
+PORT = int(os.environ.get('PORT', 3000))
+SSL_CERT_PATH = os.environ.get('SSL_CERT_PATH', 'cert.pem')
+SSL_KEY_PATH = os.environ.get('SSL_KEY_PATH', 'key.pem')
 
 # 1. Socket.IO 서버 생성 (CORS 허용)
 sio = socketio.AsyncServer(async_mode='aiohttp', cors_allowed_origins='*')
@@ -74,15 +80,15 @@ if __name__ == '__main__':
     ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
     
     try:
-        # [중요] gen_cert.py로 생성한 인증서 파일 로드
-        ssl_context.load_cert_chain('cert.pem', 'key.pem')
+        # [중요] 인증서 파일 로드 (환경변수 또는 기본값 사용)
+        ssl_context.load_cert_chain(SSL_CERT_PATH, SSL_KEY_PATH)
         
-        print("🔒 HTTPS Local Server running on https://0.0.0.0:3000")
+        print(f"🔒 HTTPS Local Server running on https://0.0.0.0:{PORT}")
         print("⚠️  브라우저 접속 시 '고급 -> 안전하지 않음으로 이동'을 눌러주세요.")
         
         # ssl_context 추가하여 실행
-        web.run_app(app, port=3000, ssl_context=ssl_context)
+        web.run_app(app, port=PORT, ssl_context=ssl_context)
         
     except FileNotFoundError:
-        print("❌ [오류] 인증서 파일(cert.pem, key.pem)을 찾을 수 없습니다.")
+        print(f"❌ [오류] 인증서 파일({SSL_CERT_PATH}, {SSL_KEY_PATH})을 찾을 수 없습니다.")
         print("   먼저 gen_cert.py를 실행하여 인증서를 생성해주세요.")
