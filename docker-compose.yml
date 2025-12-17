@@ -5,9 +5,10 @@ services:
     build: .
     container_name: webrtc-minimal
     ports:
-      - "${PORT:-3000}:${PORT:-3000}"
+      - "0.0.0.0:3000:3000"
     environment:
-      - PORT=${PORT:-3000}
+      - PORT=3000
+      - HOST=0.0.0.0
       - SSL_CERT_PATH=${SSL_CERT_PATH:-cert.pem}
       - SSL_KEY_PATH=${SSL_KEY_PATH:-key.pem}
     restart: unless-stopped

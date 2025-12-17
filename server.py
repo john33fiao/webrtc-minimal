@@ -6,6 +6,7 @@ import ssl  # [추가] SSL 모듈 임포트
 
 # 환경변수에서 설정 로드 (기본값 제공)
 PORT = int(os.environ.get('PORT', 3000))
+HOST = os.environ.get('HOST', '0.0.0.0')
 SSL_CERT_PATH = os.environ.get('SSL_CERT_PATH', 'cert.pem')
 SSL_KEY_PATH = os.environ.get('SSL_KEY_PATH', 'key.pem')
 
@@ -83,11 +84,11 @@ if __name__ == '__main__':
         # [중요] 인증서 파일 로드 (환경변수 또는 기본값 사용)
         ssl_context.load_cert_chain(SSL_CERT_PATH, SSL_KEY_PATH)
         
-        print(f"🔒 HTTPS Local Server running on https://0.0.0.0:{PORT}")
+        print(f"🔒 HTTPS Server running on https://{HOST}:{PORT}")
         print("⚠️  브라우저 접속 시 '고급 -> 안전하지 않음으로 이동'을 눌러주세요.")
         
-        # ssl_context 추가하여 실행
-        web.run_app(app, port=PORT, ssl_context=ssl_context)
+        # ssl_context 추가하여 실행 (host 명시적 지정)
+        web.run_app(app, host=HOST, port=PORT, ssl_context=ssl_context)
         
     except FileNotFoundError:
         print(f"❌ [오류] 인증서 파일({SSL_CERT_PATH}, {SSL_KEY_PATH})을 찾을 수 없습니다.")
